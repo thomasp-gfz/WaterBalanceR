@@ -2,6 +2,8 @@
 ## SPDX-FileCopyrightText: 2025 Thomas Piernicke <thomasp@gfz.de>
 ## SPDX-License-Identifier: AGPL-3.0-only
 ## DOI: https://doi.org/10.5281/zenodo.15046338
+## This software is part of an active research project and currently under peer review at the Journal of Open Source Software (JOSS). Please cite appropriately if reused.
+
 
 # WaterBalanceR
 
@@ -280,6 +282,7 @@ Here, you need to load a shapefile, that contains up to 5 polygons of spots, tha
         - readxl: 1.4.5+
         - scales: 1.3.0+
         - methods: 4.4.2+
+
 
 
 

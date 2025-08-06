@@ -1,7 +1,7 @@
 Package: WaterBalanceR
 Type: Package
 Title: Calculating water balance from NDVI-imagines
-Version: 0.1.14
+Version: 0.1.15
 DOI: 10.5281/zenodo.15046338
 Author: Thomas Piernicke
 Maintainer: Thomas Piernicke <thomasp@gfz-potsdam.de>

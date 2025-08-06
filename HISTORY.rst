@@ -2,6 +2,14 @@
 History
 =======
 
+0.1.15 (2025-08-06)
+------------------
+
+General settings:
+* Revised README.md
+* Add Citation.cff
+* Add paper.md, paper.bib and figures of workflow and example of results
+
 0.1.14 (2025-08-04)
 ------------------
 
