@@ -6,14 +6,17 @@ History
 ------------------
 
 General settings:
+
 * Updated model to calculate Kc from NDVI for Arable Mark 2 stations
 * Revised license file
 * Revised documentation within the scripts
+* Published Paper regarding underlying experiment and modelling: https://doi.org/10.3390/rs17183227
 
 0.1.15 (2025-08-06)
 ------------------
 
 General settings:
+
 * Revised README.md
 * Add Citation.cff
 * Add paper.md, paper.bib and figures of workflow and example of results
@@ -22,6 +25,7 @@ General settings:
 ------------------
 
 General settings:
+
 * Revised README.md
 
 
@@ -29,6 +33,7 @@ General settings:
 ------------------
 
 General settings:
+
 * New models in calcWB.R
 * removed possibility to choose "modeltype" (linear or poly) in calcWB.R and in sample data set
 
@@ -37,12 +42,14 @@ General settings:
 ------------------
 
 General settings:
+
 * Conversion of date-time vector in DownloadRaindancerCombineCharts.R
 
 0.1.11 (2025-04-14)
 ------------------
 
 General settings:
+
 * New DOI: https://doi.org/10.5281/zenodo.15046338
 
 
