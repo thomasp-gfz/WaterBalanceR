@@ -12,27 +12,35 @@
 #' @return .png files for every DOY within given timespan (earliest till latest NDVI-capture) showing NDVI, crop coefficient, crop evapotranspiration, precipitation, irrigation and water balance
 #' @export
 
+# -----------------------------------------------------------------------------
+# calcWBplots(): Produces “wallpaper” PNGs per DOY summarizing spatial layers
+# (NDVI, Kc, ETc, precipitation, irrigation, water balance) plus time-series
+# line plots of buffer means. Also saves an *_mean_data_charts.RData with the
+# mean time series for buffers. Expects that source_path points to an .RData
+# saved by calcWB(), containing objects like DOY, NDVI, KC, ETC_cumulated, etc.
+# -----------------------------------------------------------------------------
+
 calcWBplots=function(source_path=NA,
                              plant_doy=NA,
                              buffer20=NA,
                              shape_site=NA){
 
-  #reading shapefiles:
-  #buffer20=sf::st_read(buffer20)
-  #shape_site=sf::st_read(shape_site)
-
+  # Derive base folder and file name from provided .RData path; load results
   source_path_name=paste(strsplit(source_path,"/")[[1]][1:(length(strsplit(source_path,"/")[[1]])-1)],collapse="/")
   source_file_name=strsplit(source_path,"/")[[1]][length(strsplit(source_path,"/")[[1]])]
   load(source_path)
 
+  # Ensure output folder for plots exists
   if(dir.exists(file.path(source_path_name, "plots/"))==F){
     dir.create(file.path(source_path_name, "plots/"), showWarnings = FALSE)
   }
 
   setwd(source_path_name)
 
+  # DOY range for iteration (min..max as produced by calcWB)
   DOY=c(min(DOY,na.rm=T),max(DOY,na.rm=T))
 
+  # Harmonize CRS between AOI and buffers; set numeric EPSG into rasters where needed
   crs_shape_site=sf::st_crs(shape_site)
   buffer20=sf::st_transform(buffer20,crs_shape_site)
   terra::crs(NDVI)=as.numeric(substr(crs_shape_site$wkt,nchar(crs_shape_site$wkt)-6,nchar(crs_shape_site$wkt)-2))
@@ -41,6 +49,11 @@ calcWBplots=function(source_path=NA,
       terra::crs(precipitation_cumulated[[i]])=as.numeric(substr(crs_shape_site$wkt,nchar(crs_shape_site$wkt)-6,nchar(crs_shape_site$wkt)-2))
     }
   }
+
+  # ---------------------------------------------------------------------------
+  # Compute buffer-wise means per DOY for NDVI (spatial polygons approach)
+  # Result: data.frame with DOY in col 1 and one column per buffer (X1..Xn)
+  # ---------------------------------------------------------------------------
 
   print("Calculating mean NDVI values...")
   NDVI_mean=data.frame(matrix(NA,length(1:max(DOY,na.rm=T)),nrow(buffer20)+1))
@@ -52,6 +65,7 @@ calcWBplots=function(source_path=NA,
     }
   }
 
+  # Crop coefficient Kc buffer means
   print("Calculating mean Crop Coefficient values...")
   kc_mean=data.frame(matrix(NA,length(1:max(DOY,na.rm=T)),nrow(buffer20)+1))
   for(i in min(DOY,na.rm=T):max(DOY,na.rm=T)){
@@ -61,6 +75,7 @@ calcWBplots=function(source_path=NA,
     }
   }
 
+  # Cumulated ETc buffer means
   print("Calculating mean ETC values...")
   etc_cumulated_mean=data.frame(matrix(NA,length(1:max(DOY,na.rm=T)),nrow(buffer20)+1))
   for(i in min(DOY,na.rm=T):max(DOY,na.rm=T)){
@@ -70,6 +85,7 @@ calcWBplots=function(source_path=NA,
     }
   }
 
+  # Cumulated irrigation buffer means
   print("Calculating mean irrigation values...")
   irrigation_cumulated_mean=data.frame(matrix(NA,length(1:max(DOY,na.rm=T)),nrow(buffer20)+1))
   for(i in min(DOY,na.rm=T):max(DOY,na.rm=T)){
@@ -79,6 +95,7 @@ calcWBplots=function(source_path=NA,
     }
   }
 
+  # Cumulated precipitation buffer means (convert raster to polygons first)
   print("Calculating mean cumulated precipitation values...")
   precipitation_cumulated_mean=data.frame(matrix(NA,length(1:max(DOY,na.rm=T)),nrow(buffer20)+1))
   for(i in min(DOY,na.rm=T):max(DOY,na.rm=T)){
@@ -89,6 +106,7 @@ calcWBplots=function(source_path=NA,
     }
   }
 
+  # Cumulated water balance buffer means
   print("Calculating mean water balance values...")
   wb_cumulated_mean=data.frame(matrix(NA,length(1:max(DOY,na.rm=T)),nrow(buffer20)+1))
   for(i in min(DOY,na.rm=T):max(DOY,na.rm=T)){
@@ -98,6 +116,7 @@ calcWBplots=function(source_path=NA,
       }
   }
 
+  # Save buffer mean time series for later reuse (charts, QC, etc.)
   save(DOY,
        NDVI_mean,
        kc_mean,
@@ -109,13 +128,18 @@ calcWBplots=function(source_path=NA,
 
   print(paste("Mean values successfully saved as .RData file: ",paste(substr(source_path,1,nchar(source_path)-6),"_mean_data_charts.RData",sep="")))
 
+  # Color palette for buffer overlay and line plots (cycled up to n buffers)
   brewer.pal_col=c("darkgreen","blue", "orange","red","cyan","lightgreen")
 
+  # ---------------------------------------------------------------------------
+  # Main loop: for each DOY, build a 3x4 grid of spatial maps + time series
+  # and save a 1920x1080 “wallpaper” PNG to /wallpapers
+  # ---------------------------------------------------------------------------
   for(i in min(DOY,na.rm=T):max(DOY,na.rm=T)){
     setwd(source_path_name)
     print(paste("Creating wallpaper for DOY: ",i,sep=""))
 
-    #NDVI
+    # --- NDVI spatial map + NDVI buffer means time series ---
     NDVI_help=sf::st_as_sf(methods::as(NDVI[[i]],'SpatialPolygonsDataFrame'))
     names(NDVI_help)[1]="values"
     if(stats::sd(NDVI_help$values,na.rm = T)!=0){
@@ -133,6 +157,7 @@ calcWBplots=function(source_path=NA,
         ggplot2::theme(plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
               legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
     } else {
+      # Fallback for zero-variance cases to avoid degenerate color scales
       gg_NDVI<-ggplot2::ggplot() + ggplot2::geom_sf(data = NDVI_help, ggplot2::aes(fill = values), colour=NA)+
         ggplot2::scale_colour_gradient2(low="grey",mid="brown", high="green", name="NDVI") +
         ggplot2::scale_fill_gradient2(low="grey", mid="brown", high="green", name="NDVI")+
@@ -144,6 +169,7 @@ calcWBplots=function(source_path=NA,
               legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
     }
 
+    # Build NDVI buffer means time series and highlight current DOY
       NDVI_mean_nona=stats::na.omit(NDVI_mean)
       colnames(NDVI_mean_nona)[1]="DOY"
       NDVI_mean_long_tidyr=tidyr::pivot_longer(NDVI_mean_nona, cols = tidyselect::starts_with("X"))
@@ -160,7 +186,7 @@ calcWBplots=function(source_path=NA,
               plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
               legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
 
-    #precipitation
+    # --- Cumulated precipitation map + buffer means series ---
     precipitation_cumulated[[i]][[1]]=(terra::mask(raster::crop(precipitation_cumulated[[i]][[1]],shape_site),shape_site))
     names(precipitation_cumulated[[i]])[1]="values"
     if(stats::sd(precipitation_cumulated[[i]][[1]]@data@values,na.rm = T)!=0){
@@ -178,6 +204,7 @@ calcWBplots=function(source_path=NA,
         ggplot2::theme(plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
               legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
     } else {
+      # Fallback for zero-variance precipitation
       gg_precip<-ggplot2::ggplot() + ggplot2::geom_sf(data = sf::st_as_sf(methods::as(precipitation_cumulated[[i]][[1]],"SpatialPolygonsDataFrame")), ggplot2::aes(fill = values), colour=NA)+
         ggplot2::scale_colour_gradient2(low="red",mid="green", high="blue", name="Precipitation") +
         ggplot2::scale_fill_gradient2(low="red", mid="green", high="blue", name="prec")+
@@ -205,7 +232,7 @@ calcWBplots=function(source_path=NA,
             plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
             legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
 
-    #KC
+    # --- Kc spatial map + buffer means series ---
     names(KC[[i]])[1]="values"
     if(stats::sd(KC[[i]]$values,na.rm = T)!=0){
       gg_KC<-ggplot2::ggplot() + ggplot2::geom_sf(data = KC[[i]], ggplot2::aes(fill = values), colour=NA)+
@@ -222,6 +249,7 @@ calcWBplots=function(source_path=NA,
         ggplot2::theme(plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
               legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
     } else{
+      # Fallback for zero-variance Kc
       gg_KC<-ggplot2::ggplot() + ggplot2::geom_sf(data = KC[[i]], ggplot2::aes(fill = values), colour=NA)+
         ggplot2::scale_colour_gradient2(low="grey",mid="brown", high="green", name="Crop Coefficient") +
         ggplot2::scale_fill_gradient2(low="grey", mid="brown", high="green", name="KC")+
@@ -249,9 +277,7 @@ calcWBplots=function(source_path=NA,
             plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
             legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
 
-
-
-    #irrigation
+    ## --- Cumulated irrigation map + buffer means series ---
     names(irrigation_cumulated[[i]])[1]="values"
     if(stats::sd(irrigation_cumulated[[i]]$values,na.rm = T)!=0){
       gg_irrigation<-ggplot2::ggplot() + ggplot2::geom_sf(data = irrigation_cumulated[[i]], ggplot2::aes(fill = values), colour=NA)+
@@ -268,6 +294,7 @@ calcWBplots=function(source_path=NA,
         ggplot2::theme(plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
               legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
     }else {
+      # Fallback for zero-variance irrigation
       gg_irrigation<-ggplot2::ggplot() + ggplot2::geom_sf(data = irrigation_cumulated[[i]], ggplot2::aes(fill = values), colour=NA)+
         ggplot2::scale_colour_gradient2(low="red",mid="green", high="blue", name="Irrigation") +
         ggplot2::scale_fill_gradient2(low="red", mid="green", high="blue", name="Irg")+
@@ -295,7 +322,7 @@ calcWBplots=function(source_path=NA,
             plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
             legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
 
-    #ETC
+    # --- Cumulated ETc map + buffer means series ---
     names(ETC_cumulated[[i]])[1]="values"
     if(stats::sd(ETC_cumulated[[i]]$values,na.rm = T)!=0){
       gg_ETC<-ggplot2::ggplot() + ggplot2::geom_sf(data = ETC_cumulated[[i]], ggplot2::aes(fill = values), colour=NA)+
@@ -312,6 +339,7 @@ calcWBplots=function(source_path=NA,
         ggplot2::theme(plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
               legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
     } else {
+      # Fallback for zero-variance ETc
       gg_ETC<-ggplot2::ggplot() + ggplot2::geom_sf(data = ETC_cumulated[[i]], ggplot2::aes(fill = values), colour=NA)+
         ggplot2::scale_colour_gradient2(low="grey",mid="brown", high="green", name="Crop Evapotranspiration") +
         ggplot2::scale_fill_gradient2(low="grey", mid="brown", high="green", name="ETc")+
@@ -339,7 +367,7 @@ calcWBplots=function(source_path=NA,
             plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
             legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
 
-    #water balance
+    # --- Cumulated water balance map + buffer means series ---
     names(WB_cumulated[[i]])[1]="values"
     if(stats::sd(WB_cumulated[[i]]$values,na.rm = T)!=0){
       gg_wb<-ggplot2::ggplot() + ggplot2::geom_sf(data = WB_cumulated[[i]], ggplot2::aes(fill = values), colour=NA)+
@@ -356,6 +384,7 @@ calcWBplots=function(source_path=NA,
         ggplot2::theme(plot.title = ggplot2::element_text(size = 16, face = "bold", color = "black"),
               legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
     } else{
+      # Fallback for zero-variance WB
       gg_wb<-ggplot2::ggplot() + ggplot2::geom_sf(data = WB_cumulated[[i]], ggplot2::aes(fill = values), colour=NA)+
         ggplot2::scale_colour_gradient2(low="red",mid="green", high="blue", name="Water Balance") +
         ggplot2::scale_fill_gradient2(low="red", mid="green", high="blue", name="WB")+
@@ -386,7 +415,7 @@ calcWBplots=function(source_path=NA,
             legend.title = ggplot2::element_text(size=14),legend.text = ggplot2::element_text(size=14))
 
 
-
+    # Arrange 12 panels (3 rows) into an ensemble dashboard for this DOY
     gg_ensemble=gridExtra::grid.arrange(gg_NDVI,
                                         gg_NDVI_mean,
                                         gg_precip,
@@ -401,6 +430,7 @@ calcWBplots=function(source_path=NA,
                                         gg_wb_mean,
                                         nrow=3)
 
+    # Write PNG “wallpaper” to /wallpapers (creates folder if needed)
     if(dir.exists(file.path(source_path_name,"wallpapers"))==F){
       dir.create(file.path(source_path_name,"wallpapers"), showWarnings = FALSE, recursive=TRUE)
     }
@@ -412,7 +442,7 @@ calcWBplots=function(source_path=NA,
            height = 1080,
            units = "px",
            dpi = 70)
-    try(grDevices::dev.off())
+    try(grDevices::dev.off()) # Close device if still open
   }
   print(paste("All wallpapers successfully saved: ",file.path(source_path_name,"wallpapers"),sep=""))
 }

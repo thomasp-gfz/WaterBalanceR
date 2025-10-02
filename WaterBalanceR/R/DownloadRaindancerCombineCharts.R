@@ -11,54 +11,71 @@
 #' @return A shapefile, that contains all irrigation events, that were download. The shapefile is being opdated every time this script is being run, as long as all configuration parameter stay the same.
 #' @export
 
-### 1. Einlesen der Korrdinatenprotokolle ----
+### 1. Read coordinate logs (Koordinatenprotokolle) and process them ----
 DownloadRaindancerCombineCharts=function(sourcepath=NA,
                                          targetpath=NA,
                                          start_date=paste(substr(Sys.Date(),1,4),"-01-01",sep=""),
                                          nozzle_diameter="25_4",
                                          target_crs=32633){
-
+# List timestamped subfolders produced by DownloadRaindancer()
 date_folders=dir(sourcepath)
+
+# Load nozzle pressure→radius lookup (from package extdata) based on nozzle_diame
 buffer_dist=system.file("extdata", paste("Nelson_SR50_Nozzle_",nozzle_diameter,"_irrigation_radius.csv",sep=""), package="WaterBalanceR", mustWork=TRUE)
 buffer_dist=utils::read.csv(buffer_dist,header=T,sep=",")
-#irrigation_chart_file_path=system.file("extdata", "irrigation_tab.csv", package="WaterBalanceR", mustWork=TRUE)
+
+# Load pressure/speed→application table (mm) for given nozzle_diameter
 irrigation_chart_file_path=system.file("extdata", paste("Nelson_SR50_Nozzle_",nozzle_diameter,"_irrigation_tab.csv",sep=""), package="WaterBalanceR", mustWork=TRUE)
 irrigation_chart=utils::read.csv(irrigation_chart_file_path,header=T,sep=",")
 rownames(irrigation_chart)=irrigation_chart[,1]
 irrigation_chart=irrigation_chart[,-1]
 colnames(irrigation_chart)=as.character(c(10:60))
 
+# Identify application protocol files (Einsatzprotokoll) in the newest run folder
 my_files_application_protocol=dir(paste(sourcepath,max(date_folders),sep=""))
 application_protocol_file=my_files_application_protocol[grepl("Einsatzprotokoll",my_files_application_protocol)]
 
+# Prepare container for all coordinate tables across all runs
 coord_tab_all=list(NA)
+
+# Iterate over each timestamped folder (each scraping run)
 for (j in 1:length(date_folders)){
   my_files=dir(paste(sourcepath,date_folders[j],sep=""))
 
+  # Filter coordinate protocol Excel files
   coord_protocols=my_files[grepl("Koordinatenprotokoll",my_files)]
   coord_protocols_tab=as.data.frame(matrix(NA,length(coord_protocols),3))
   names(coord_protocols_tab)=c("Protocol","Sprinkler Name","Date_Time")
 
+  # Parse filename components: protocol id, sprinkler name, timestamp
   coord_protocols_tab[,1]=substr(coord_protocols,1,20)
   coord_protocols_tab[,2]=substr(coord_protocols,22,nchar(coord_protocols)-23)
   coord_protocols_tab[,3]=as.POSIXct(strptime(substr(coord_protocols,nchar(coord_protocols)-21,nchar(coord_protocols)-5),"%Y-%m-%d_%H%M%S" ))
 
   coord_tab=list(NA)
   print("Loading Excel Files...")
+
+  # Read each coordinate protocol and attach meta fields
   for(i in 1:nrow(coord_protocols_tab)){ #i = sprinkler
     coord_tab_temp=readxl::read_excel(paste(sourcepath,date_folders[j],"/",coord_protocols[i],sep=""),.name_repair = "unique_quiet")
     coord_tab_temp=readxl::read_excel(paste(sourcepath,date_folders[j],"/",coord_protocols[i],sep=""),.name_repair = "unique_quiet")
     coord_tab_temp$sprinkler=coord_protocols_tab[i,2]
     coord_tab_temp$date_time=coord_protocols_tab[i,3]
     coord_tab_temp$site=NA
+
+    # Remove records with no deployment / no transmission; keep only bar >= 1
     coord_tab_temp=subset(coord_tab_temp,coord_tab_temp$Status!="Regner hat keinen Einsatz")
     coord_tab_temp=subset(coord_tab_temp,coord_tab_temp$Status!="Regner sendet nicht mehr")
     coord_tab_temp=subset(coord_tab_temp,coord_tab_temp$bar>=1)
+
+    # Parse timestamps and apply start_date filter
     coord_tab_temp$Zeitpunkt=as.POSIXct(coord_tab_temp$Zeitpunkt, format = "%d.%m.%Y %H:%M:%OS")
     coord_tab_temp=subset(coord_tab_temp,coord_tab_temp$Zeitpunkt>=start_date)
 
+    # Read the corresponding application protocol (Einsatzprotokoll) for mapping to "site"
     application_protocol=readxl::read_excel(paste(sourcepath,max(date_folders),"/",application_protocol_file[i],sep=""),.name_repair = "unique_quiet")
 
+    # Match each coordinate row to a site (field) if its timestamp falls within a protocol window (± 480s)
     for(k in 1:nrow(coord_tab_temp)){#k = coordinate table
       for(l in 1:nrow(application_protocol)){#l = application protocol
         if(nrow(application_protocol)>0){#only calculate, when there is at least one irrigation event
@@ -78,7 +95,10 @@ for (j in 1:length(date_folders)){
   coord_tab_all[[j]]=coord_tab
 }
 
+# Bind all coordinate records from all runs into one big table
 coord_tab_all_bound=as.data.frame(do.call(rbind.data.frame,do.call(c, coord_tab_all)))
+
+# Keep distinct rows across key fields
 coord_tab_all_bound_distinct=dplyr::distinct(coord_tab_all_bound,
                                       coord_tab_all_bound$Breitengrad,
                                       coord_tab_all_bound$Längengrad,
@@ -88,6 +108,7 @@ coord_tab_all_bound_distinct=dplyr::distinct(coord_tab_all_bound,
                                       coord_tab_all_bound$bar,
                                       coord_tab_all_bound$Status)
 
+# Rename columns to ASCII-friendly names
 colnames(coord_tab_all_bound_distinct)=c("Breitengrad",
                                          "Laengengrad",
                                          "Zeitpunkt",
@@ -96,8 +117,10 @@ colnames(coord_tab_all_bound_distinct)=c("Breitengrad",
                                          "Bar",
                                          "Status")
 
+# Drop any remaining NA rows
 coord_tab_all_bound_distinct=stats::na.omit(coord_tab_all_bound_distinct)
 
+# One table per site (field)
 unique_sites=unique(coord_tab_all_bound_distinct$Site)
 
 site_irrigation=list(NA)
@@ -108,9 +131,12 @@ for (i in 1:length(unique_sites)){
   site_irrigation[[i]]=subset(coord_tab_all_bound_distinct,coord_tab_all_bound_distinct$Site==unique_sites[i])
 }
 names(site_irrigation)=unique_sites
+
+# Save RData snapshot grouped by site (for provenance)
 save(site_irrigation,file=paste(targetpath,substr(Sys.time(),1,10),"_irrigation_by_site_",start_date,".RData",sep=""))
 
 ##################################
+# Prepare multiple parallel data containers for raw vs. filtered vs. interpolated series
 site_irrigation_2=site_irrigation
 site_irrigation_2_new=list(NA)
 site_irrigation_2_orig=list(NA)
@@ -132,24 +158,27 @@ Buffer_36m_orig=list(NA)
 Buffer_36m_all_shp=list(NA)
 Buffer_36m_orig_all_shp=list(NA)
 
+# Process each site separately
 for (i in 1:length(site_irrigation)){
+  # Initialize distance column (repeated lines retained as-is)
   site_irrigation_2[[i]]$entfernung=NA
   site_irrigation_2[[i]]$entfernung=NA
   site_irrigation_2[[i]]$entfernung=NA
 
-  #turn sequence in chart upside-down
+  # Reverse time order (most recent first → earliest first or vice versa)
   site_irrigation_2[[i]]=site_irrigation_2[[i]][nrow(site_irrigation_2[[i]]):1,]
 
-  #replace Comma by point
+  # Normalize decimal separators in coordinates
   site_irrigation_2[[i]]$Laengengrad=gsub(",", ".", site_irrigation_2[[i]]$Laengengrad)#Replace , by .
   site_irrigation_2[[i]]$Breitengrad=gsub(",", ".", site_irrigation_2[[i]]$Breitengrad)#Replace , by .
 
-  #floating average of coordinates, pressure, date and time (filter)
+  # Prepare moving-average (filter) placeholders
   site_irrigation_2[[i]]$Laengengrad_mean=NA
   site_irrigation_2[[i]]$Breitengrad_mean=NA
   site_irrigation_2[[i]]$Druck_mean=NA
   site_irrigation_2[[i]]$Datum_Uhrzeit_mean=NA
 
+  # 5-point moving average over windows of 9 observations (centered)
   if (nrow(site_irrigation_2[[i]])>=9){
   j=5
   j_min=j-4
@@ -163,37 +192,42 @@ for (i in 1:length(site_irrigation)){
       j=j+5
       j_min=j-4
       j_max=j+4#5
-  }
+    }
+
+  # Ensure POSIXct after loop
   site_irrigation_2[[i]]$Datum_Uhrzeit_mean=as.POSIXct(strptime(site_irrigation_2[[i]]$Datum_Uhrzeit_mean,"%Y-%m-%d %H:%M:%S" ))
 
-  #write filtered values in new matrix
+  # Split into filtered vs. original frames
   site_irrigation_2_new[[i]]=stats::na.omit(site_irrigation_2[[i]][,9:12])
   site_irrigation_2_orig[[i]]=site_irrigation_2[[i]][,1:7]
 
-  #calculate time difference in hours
+  # Compute time deltas (minutes) between successive filtered timestamps
   site_irrigation_2_new[[i]]$timedif=NA
   for (j in 1:(nrow(site_irrigation_2_new[[i]])-1)){
     site_irrigation_2_new[[i]]$timedif[j+1]=(site_irrigation_2_new[[i]]$Datum_Uhrzeit_mean[j+1]-site_irrigation_2_new[[i]]$Datum_Uhrzeit_mean[j])/60
   }
 
+  # Compute time deltas (minutes) for original series
   site_irrigation_2_orig[[i]]$timedif=NA
   for (j in 1:(nrow(site_irrigation_2_orig[[i]])-1)){
     site_irrigation_2_orig[[i]]$timedif[j+1]=(site_irrigation_2_orig[[i]]$Zeitpunkt[j+1]-site_irrigation_2_orig[[i]]$Zeitpunkt[j])/60
   }
 
+  # Distance between successive filtered GPS points (m)
   site_irrigation_2_new[[i]]$dist_gps=NA
   for (j in 1:(nrow(site_irrigation_2_new[[i]])-1)){
     site_irrigation_2_new[[i]]$dist_gps[j+1]=geosphere::distm(c(site_irrigation_2_new[[i]]$Laengengrad[j], site_irrigation_2_new[[i]]$Breitengrad[j]),c(site_irrigation_2_new[[i]]$Laengengrad[j+1], site_irrigation_2_new[[i]]$Breitengrad[j+1]), fun = geosphere::distGeo)
   }
   site_irrigation_2_new[[i]]$geschwindigkeit_gps=site_irrigation_2_new[[i]]$dist_gps/site_irrigation_2_new[[i]]$timedif
 
+  # Distance/speed for original series
   site_irrigation_2_orig[[i]]$dist_gps=NA #for original Data
   for (j in 1:(nrow(site_irrigation_2_orig[[i]])-1)){
     site_irrigation_2_orig[[i]]$dist_gps[j+1]=geosphere::distm(c(site_irrigation_2_orig[[i]]$Laengengrad[j], site_irrigation_2_orig[[i]]$Breitengrad[j]),c(site_irrigation_2_orig[[i]]$Laengengrad[j+1], site_irrigation_2_orig[[i]]$Breitengrad[j+1]), fun = geosphere::distGeo)
   }
   site_irrigation_2_orig[[i]]$geschwindigkeit_gps=site_irrigation_2_orig[[i]]$dist_gps/site_irrigation_2_orig[[i]]$timedif
 
-  #Calculate irrigation amount from pressure and speed
+  # Compute application depth (mm) from pressure & speed using lookup (filtered data)
   site_irrigation_2_new[[i]]$Beregnungshoehe_GPS=NA #for interpolated data
   for (j in 1:nrow(site_irrigation_2_new[[i]])){
     if (is.na(site_irrigation_2_new[[i]]$geschwindigkeit_gps[j])==F & site_irrigation_2_new[[i]]$geschwindigkeit_gps[j]>=10 & as.numeric(site_irrigation_2_new[[i]]$Druck_mean[j])>=3.5){
@@ -203,6 +237,7 @@ for (i in 1:length(site_irrigation)){
       site_irrigation_2_new[[i]]$Beregnungshoehe_GPS[j]=ifelse(length(help_beregnung)==1,help_beregnung,NA)
     }}
 
+  # Same application depth computation for original series (with bounds checks)
   site_irrigation_2_orig[[i]]$Beregnungshoehe_GPS=NA #for original Data
   for (j in 1:nrow(site_irrigation_2_orig[[i]])){
     if (is.na(site_irrigation_2_orig[[i]]$geschwindigkeit_gps[j])==F){
@@ -218,20 +253,21 @@ for (i in 1:length(site_irrigation)){
       }
   }
 
-  #cumulate distance
+  # Cumulative distance along track (filtered)
   site_irrigation_2_new[[i]]$Distanz_kum=NA #for interpolated data
   site_irrigation_2_new[[i]]$Distanz_kum[2]=site_irrigation_2_new[[i]]$dist_gps[2]
   for (j in 3:nrow(site_irrigation_2_new[[i]])){
     site_irrigation_2_new[[i]]$Distanz_kum[j]=site_irrigation_2_new[[i]]$Distanz_kum[j-1]+site_irrigation_2_new[[i]]$dist_gps[j]
   }
 
+  # Cumulative distance (original)
   site_irrigation_2_orig[[i]]$Distanz_kum=NA #for original Data
   site_irrigation_2_orig[[i]]$Distanz_kum[2]=site_irrigation_2_orig[[i]]$dist_gps[2]
   for (j in 3:nrow(site_irrigation_2_orig[[i]])){
     site_irrigation_2_orig[[i]]$Distanz_kum[j]=site_irrigation_2_orig[[i]]$Distanz_kum[j-1]+site_irrigation_2_orig[[i]]$dist_gps[j]
   }
 
-  #Interpolation
+  # Build interpolation skeleton: insert 4 NAs between each record (5× upsampling)
   site_irrigation_2_new_interp[[i]]=as.data.frame(matrix(NA,nrow(site_irrigation_2_new[[i]])*5,ncol(site_irrigation_2_new[[i]])))
   colnames(site_irrigation_2_new_interp[[i]])=colnames(site_irrigation_2_new[[i]])
   j=1
@@ -240,7 +276,7 @@ for (i in 1:length(site_irrigation)){
     j=j+5
   }
 
-  #no-NA-Method
+  # Fill the inserted NAs linearly (no-NA method across moving segments)
   m=6
   n=11
   for (k in 1:nrow(site_irrigation_2_new_interp[[i]])){
@@ -252,24 +288,24 @@ for (i in 1:length(site_irrigation)){
     n=n+5
   }
 
-  #write date and time as vector
+  # Ensure POSIXct time for interpolated series
   site_irrigation_2_new_interp[[i]]$Datum_Uhrzeit_mean=as.POSIXct(site_irrigation_2_new_interp[[i]]$Datum_Uhrzeit_mean,origin = '1970-01-01')
 
-  #discard NAs from interpolated data
+  # Drop rows with remaining NAs
   site_irrigation_2_new_interp_na_omit[[i]]=stats::na.omit(site_irrigation_2_new_interp[[i]])
 
-  #reproject shapefiles and save as list - for interpolated data
+  # Convert filtered-interpolated points → sf, set WGS84, then transform to target CRS
   csv_list_new_interp_na_omit_shapes_32633[[i]]=sf::st_as_sf(site_irrigation_2_new_interp_na_omit[[i]], coords = c("Laengengrad_mean", "Breitengrad_mean"), crs = 4326)
   sf::st_crs(csv_list_new_interp_na_omit_shapes_32633[[i]])=4326
   csv_list_new_interp_na_omit_shapes_32633[[i]]=sf::st_transform(csv_list_new_interp_na_omit_shapes_32633[[i]],target_crs)
 
-  #for original data
+  # Original (raw) positions → sf, WGS84 → target CRS
   site_irrigation_2_orig_na_omit[[i]]=subset(site_irrigation_2_orig[[i]],is.na(site_irrigation_2_orig[[i]]$Laengengrad)==F & is.na(site_irrigation_2_orig[[i]]$Breitengrad)==F &site_irrigation_2_orig[[i]]$Laengengrad != "" & site_irrigation_2_orig[[i]]$Breitengrad != "")
   csv_list_new_orig_shapes_32633[[i]]=sf::st_as_sf(site_irrigation_2_orig_na_omit[[i]], coords = c("Laengengrad", "Breitengrad"), crs = 4326)
   sf::st_crs(csv_list_new_orig_shapes_32633[[i]])=4326
   csv_list_new_orig_shapes_32633[[i]]=sf::st_transform(csv_list_new_orig_shapes_32633[[i]],target_crs)
 
-  #create buffer - interpolated data
+  # Build variable-radius buffers around interpolated points using pressure→radius lookup
   Buffer_36m[[i]]=csv_list_new_interp_na_omit_shapes_32633[[i]]
   ###
   Druck_mean=round(Buffer_36m[[i]]$Druck_mean,1)
@@ -282,9 +318,11 @@ for (i in 1:length(site_irrigation)){
 
   Buffer_36m[[i]]=sf::st_buffer(Buffer_36m[[i]], dist = buffer_dist_num)
   ###
-  #Buffer_36m[[i]]=sf::st_buffer(Buffer_36m[[i]], dist = buffer_dist)
+
+  # Compute DOY from interpolated timestamps
   Buffer_36m[[i]]$DOY=lubridate::yday(as.POSIXct(strptime(Buffer_36m[[i]]$Datum_Uhrzeit_mean,"%Y-%m-%d %H:%M:%S" )))
 
+  # Annotate field name on each geometry (interpolated)
   for (j in 1:length(Buffer_36m)){
     if(is.null(Buffer_36m[[j]])==F){
       if(nrow(Buffer_36m[[j]])>0){
@@ -293,7 +331,7 @@ for (i in 1:length(site_irrigation)){
     }
   }
 
-  #create buffer - original data
+  # Same variable-radius buffering for original points using Bar column
   Buffer_36m_orig[[i]]=csv_list_new_orig_shapes_32633[[i]]
   ###
   Druck_mean=round(Buffer_36m_orig[[i]]$Bar,1)
@@ -307,9 +345,11 @@ for (i in 1:length(site_irrigation)){
   Buffer_36m_orig[[i]]=sf::st_buffer(Buffer_36m_orig[[i]], dist = buffer_dist_num)
 
   ###
-  #Buffer_36m_orig[[i]]=sf::st_buffer(Buffer_36m_orig[[i]], dist = buffer_dist)
+
+  # DOY from original timestamps
   Buffer_36m_orig[[i]]$DOY=lubridate::yday(as.POSIXct(strptime(Buffer_36m_orig[[i]]$Zeitpunkt,"%Y-%m-%d %H:%M:%S" )))
 
+  # Annotate field name on each original geometry
   for (j in 1:length(Buffer_36m_orig)){
     if(is.null(Buffer_36m_orig[[j]])==F){
       if(nrow(Buffer_36m_orig[[j]])>0){
@@ -318,17 +358,19 @@ for (i in 1:length(site_irrigation)){
     }
   }
 
+  # Convert to Spatial for rbind later (interpolated)
     if(nrow(Buffer_36m[[i]])>0){
     Buffer_36m_all_shp[[i]]=methods::as(Buffer_36m[[i]], 'Spatial')
     }
 
+  # Convert to Spatial for rbind later (original)
     if(nrow(Buffer_36m_orig[[i]])>0){
     Buffer_36m_orig_all_shp[[i]]=methods::as(Buffer_36m_orig[[i]], 'Spatial')
     }
   }
 }
 
-#merge all single list entries of plots to one SPDF
+# Merge all site lists into single Spatial* objects (interpolated)
 Buffer_36m_all_shp_2=Buffer_36m_all_shp
 k=1
 for (i in 1:length(Buffer_36m_all_shp_2)){
@@ -340,6 +382,7 @@ for (i in 1:length(Buffer_36m_all_shp_2)){
 }
 Buffer_36m_all_shp_2=do.call(rbind,Buffer_36m_all_shp_2)
 
+# Merge all site lists into single Spatial* objects (original)
 Buffer_36m_orig_all_shp_2=Buffer_36m_orig_all_shp
 k=1
 for (i in 1:length(Buffer_36m_orig_all_shp_2)){
@@ -351,11 +394,13 @@ for (i in 1:length(Buffer_36m_orig_all_shp_2)){
 }
 Buffer_36m_orig_all_shp_2=do.call(rbind,Buffer_36m_orig_all_shp_2)
 
-#export as shapefiles
+# Ensure output directory exists
+# (targetpath is the folder where final shapefiles will be written)
 if(dir.exists(file.path(paste(targetpath,sep="")))==F){
   dir.create(file.path(paste(targetpath,sep="")), showWarnings = FALSE, recursive=TRUE)
 }
 
+# Write both interpolated and original buffers as ESRI Shapefiles
 setwd(paste(targetpath,sep=""))
 suppressWarnings(sf::st_write(sf::st_as_sf(Buffer_36m_orig_all_shp_2), paste(targetpath,"Buffer_36m_all_orig.shp",sep=""), driver = 'ESRI Shapefile', layer = 'Buffer_36m_all_orig', overwrite_layer = T,append=FALSE))
 suppressWarnings(sf::st_write(sf::st_as_sf(Buffer_36m_all_shp_2), paste(targetpath,"Buffer_36m_all_interp.shp",sep=""), driver = 'ESRI Shapefile', layer = 'Buffer_36m_all_interp', overwrite_layer = T,append=FALSE))

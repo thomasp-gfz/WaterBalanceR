@@ -2,6 +2,14 @@
 History
 =======
 
+0.1.16 (2025-09-26)
+------------------
+
+General settings:
+* Updated model to calculate Kc from NDVI for Arable Mark 2 stations
+* Revised license file
+* Revised documentation within the scripts
+
 0.1.15 (2025-08-06)
 ------------------
 

@@ -27,6 +27,14 @@
 #' @importFrom RCurl getURL
 #' @export
 
+# -----------------------------------------------------------------------------
+# calcWB(): Main driver to compute daily and cumulative water balance layers
+# from NDVI (UAV/Planet/S2), reference ET (DWD/Arable), precipitation (RADOLAN
+# or FURUNO), and optional irrigation shapefile. Outputs (optionally) GeoTIFFs,
+# shapefiles, and an .RData bundle. Uses a linear (or polynomial) NDVI->Kc
+# relationship and pixel-wise water balance: P + Irr - ETc.
+# -----------------------------------------------------------------------------
+
 calcWB=function(mypath,
                        shape_site=NA,
                        target_res=5,
@@ -44,21 +52,20 @@ calcWB=function(mypath,
                        arable_user=NA,
                        arable_pass=NA){
 
-  start.time = Sys.time()
+  start.time = Sys.time() # For simple runtime logging
 
-  #reading shapefiles
-  #shape_site=sf::st_read(shape_site)
-  #irrig_sf=sf::st_read(irrig_sf)
-
-  target_res=target_res
+  target_res=target_res # Explicitly keep target_res as given
   NDVI_List=list.files(paste(mypath,"/NDVI_Files/",sep=""),pattern = "\\.tif$")
   if(any(substr(NDVI_List,10,13)=="Sen2")){
+    # Sentinel-2 limitation: native 10 m; enforce 10 m target resolution if S2 is present
     print("Sentinel-2 images cannot be processed with a resolution of res < 10 m. Set target_res = 10")
     target_res=10
   }
+  # Extract DOY from first 8 chars (YYYYMMDD) of filename
   DOY=lubridate::yday(as.POSIXct(strptime(substr(NDVI_List,1,8),"%Y%m%d" )))
 
   #### 1.create empty lists ----
+  # Containers for intermediate rasters/polygons by DOY index
   originals=list(NA)
   plot_list=list(NA)
   cropped=vector(mode="list",length=max(DOY))
@@ -72,6 +79,11 @@ calcWB=function(mypath,
   print("1. create empty lists done - loading tiffs")
 
   #### 2. read or calculate NDVI data, rsp. ----
+  # Loads NDVI per source:
+  # - P4M1 (UAV): direct single-band NDVI GeoTIFF
+  # - Plan(et): compute NDVI from band 8 (NIR) and band 6 (red)
+  # - Sen2: direct NDVI raster (assumed precomputed)
+
   setwd(paste(mypath,"/NDVI_Files/",sep=""))
   for (i in 1:length(NDVI_List)){
     if(substr(NDVI_List[[i]],10,13)=="P4M1"){
@@ -92,6 +104,9 @@ calcWB=function(mypath,
   print("2. Load tiff files as raster done - cropping and resampling...")
 
   #### 3. resample rasters to site outlines, crop, mask and resample ----
+  # Align all NDVI rasters to AOI (crop + mask), then temporally resample each
+  # subsequent day to the grid of the previous day to have a common grid chain.
+
   for (i in 1:length(DOY)){#Crop and mask to shapefile of AOI
     cropped[[DOY[i]]] = terra::crop(originals[[DOY[i]]],shape_site)
     subsetted[[DOY[i]]] = terra::mask(cropped[[DOY[i]]], shape_site)
@@ -105,11 +120,13 @@ calcWB=function(mypath,
   print("3. Crop, mask and resampling to site outlines done - aggregating files to target resolution...")
 
   #### 4. Aggregation of tiff files ----
+  # Aggregate to target_res using factor relative to current pixel size, re-crop/mask to AOI
+
   for (i in 1:length(DOY)){
     aggregated[[DOY[i]]]=terra::aggregate(subsetted_resampled[[DOY[i]]],fact=target_res/raster::res(subsetted_resampled[[DOY[i]]]))
     aggregated_cropped[[DOY[i]]] = terra::crop(aggregated[[DOY[i]]],shape_site)
     aggregated_cropped_subsetted[[DOY[i]]] = terra::mask(aggregated_cropped[[DOY[i]]], shape_site)
-    aggregated_cropped[[DOY[i]]]=NA
+    aggregated_cropped[[DOY[i]]]=NA # Free intermediate to save memory
   }
 
   aggregated_cropped_subsetted_2=aggregated_cropped_subsetted
@@ -117,11 +134,13 @@ calcWB=function(mypath,
   print("4. Aggregation of tiff files done - correction of NDVI from UAV/satellite to Arable standard...")
 
   ### 5. Correction of NDVI from UAV or Planet to Arable standard ----
+  # Apply empirical transfer functions to harmonize NDVI to “Arable standard”
+
   for (i in 1:length(NDVI_List)){
     if(substr(NDVI_List[[i]],10,13)=="P4M1"){
       NDVI_source="UAV"
 
-      #UAV
+      #UAV polynomial correction
       aggregated_cropped_subsetted_2[[DOY[i]]]=
         (2.12664*aggregated_cropped_subsetted[[DOY[i]]]^3)-
         (3.79245*aggregated_cropped_subsetted[[DOY[i]]]^2)+
@@ -130,7 +149,7 @@ calcWB=function(mypath,
     } else if(substr(NDVI_List[[i]],10,13)=="Plan"){
       NDVI_source="Planet"
 
-      #Planet
+      # Planet quartic correction
       aggregated_cropped_subsetted_2[[DOY[i]]]=
         -1*(9.0673*aggregated_cropped_subsetted[[DOY[i]]]^4)+
         (21.7178*aggregated_cropped_subsetted[[DOY[i]]]^3)-
@@ -140,7 +159,7 @@ calcWB=function(mypath,
     } else if(substr(NDVI_List[[i]],10,13)=="Sen2"){
       NDVI_source="Sen2"
 
-      #Sentinel-2
+      # Sentinel-2 quadratic correction
       aggregated_cropped_subsetted_2[[DOY[i]]]=
         (-0.987607*aggregated_cropped_subsetted[[DOY[i]]]^2)+
         (1.838723*aggregated_cropped_subsetted[[DOY[i]]])-
@@ -151,6 +170,9 @@ calcWB=function(mypath,
   print("5. Correction of NDVI from UAV or Planet to Arable standard done - interpolating cropped NDVI-sets and saving daily values...")
 
   #### 6. Interpolation of cropped NDVI-sets and saving of daily values ----
+  # Create a daily NDVI stack (1..max(DOY)); fill observed days, set others to NA,
+  # set pre-germination (last_NDVI_0 and before) to 0, then interpolate time series.
+
   aggregated_cropped_subsetted_3=unlist(aggregated_cropped_subsetted_2[[DOY[1]]])
   raster::values(aggregated_cropped_subsetted_3)=NA
   aggregated_cropped_subsetted_4 = sapply(1:max(DOY), function(...) aggregated_cropped_subsetted_3)
@@ -161,6 +183,7 @@ calcWB=function(mypath,
     }
   }
 
+  # Initialize day of NDVI=0 (pre-germination)
   aggregated_cropped_subsetted_4[[last_NDVI_0]]=aggregated_cropped_subsetted_4[[DOY[1]]]
   for(i in 1:length(aggregated_cropped_subsetted_4[[last_NDVI_0]]@data@values)){
     if(is.na(aggregated_cropped_subsetted_4[[last_NDVI_0]]@data@values[i])==F){
@@ -168,10 +191,12 @@ calcWB=function(mypath,
     }
   }
 
+  # Fill all preceding days with 0 as well
   for(i in 1:(last_NDVI_0-1)){
     aggregated_cropped_subsetted_4[[i]]=aggregated_cropped_subsetted_4[[last_NDVI_0]]
   }
 
+  # Force two sentinel pixels (1=1, 2=0) to prevent edge-case interpolation issues
   for(i in 1:length(aggregated_cropped_subsetted_4)){
     aggregated_cropped_subsetted_4[[i]]@data@values[1]=1
     aggregated_cropped_subsetted_4[[i]]@data@values[2]=0
@@ -188,6 +213,9 @@ calcWB=function(mypath,
   print("6. Interpolation of cropped NDVI-sets and saving of daily values done - derive reference ET...")
 
   #### 7. derive ET_ref ----
+  # Load ET0 either from provided table (first col dummy index, second ET0, third Date)
+  # or download via DWD/Arable. Convert Date column to DOY and keep ET0 + DOY.
+  # NOTE: For Arable, requires credentials and correct date range (my_year must exist upstream).
   #ET0 from DWD-Daten
 
   if(length(ET_ref)!=1){
@@ -213,16 +241,19 @@ calcWB=function(mypath,
     }
   }
 
+  # Fail fast if ET0 data is missing
   if (all(is.na(ET0_3[,1])) == T){
     stop("No reference ET data available from Arable for your desired timespan. Please choose ET_ref_dl=DWD for configuration.")
   }
 
+  # Clean ET0: replace "NaN" as NA, then linearly interpolate gaps
   ET0_3[ET0_3[,1]=="NaN",1]=NA
   ET0_3[,1]=zoo::na.approx(ET0_3[,1],na.rm=F)
 
   print("7. derive reference ET done - calculate precipitation...")
 
     #### 8.1 calculation of precipitation from FURUNO ----
+    # Load daily WR polygon layers; if missing day, reuse earliest with zero layer.
     if(precip_source=="furuno"){
       WR_precip_List=list.files(path=path_WR_precip,pattern = "\\.shp$")
       WR_precip=vector(mode='list', length=366)
@@ -243,6 +274,9 @@ calcWB=function(mypath,
     }
 
     #### 8.2 calculation of precipitation from Radolan ----
+    # If no path provided, auto-download RADOLAN daily sums for NDVI date range,
+    # then load daily shapefiles into list and fill gaps as zero layers when needed.
+
 
     if(precip_source=="radolan"){
 
@@ -275,11 +309,13 @@ calcWB=function(mypath,
   print("8. calculation of precipitation done.")
 
   #### 9. start WB Model ----
+  # Compute daily water balance per pixel:
+  # WB = precipitation + irrigation - ETc, with Kc derived from NDVI (linear).
 
   print("9. start WB Model for doy..")
 
-    aspect_KC=1.4535593
-    y_Kc=-0.1686968
+    aspect_KC=1.493374 # Slope of NDVI->Kc relation
+    y_Kc=-0.220506 # Intercept of NDVI->Kc relation
 
   KC=vector(mode='list', length=max(DOY,na.rm=T))
   WB_daily=list(NA)
@@ -289,15 +325,18 @@ calcWB=function(mypath,
   irrigation=list(NA)
 
   for (i in min(DOY,na.rm=T):max(DOY,na.rm=T)){
-    subs_help_DOY=subset(ET0_3,ET0_3$DOY==i)
+    subs_help_DOY=subset(ET0_3,ET0_3$DOY==i) # Daily ET0 for day i
+    # Subset irrigation features for day i and neighbors (account for spillover)
     subs_beregnung=raster::subset(irrig_sf,irrig_sf$DOY==i)
     subs_beregnung2=raster::subset(irrig_sf,irrig_sf$DOY==(i+1))
     subs_beregnung0=raster::subset(irrig_sf,irrig_sf$DOY==(i-1))
+    # Convert NDVI raster to polygons for pixel-wise vector operations
     aggregated_cropped_subsetted_10=sf::st_as_sf(methods::as(NDVI[[i]],'SpatialPolygonsDataFrame'))
     aggregated_cropped_subsetted_10_ETC=sf::st_as_sf(methods::as(NDVI[[i]],'SpatialPolygonsDataFrame'))
 
     print(i)
 
+    # Rasterize precipitation layer onto NDVI grid (handle projection & extent)
     r_hr <- raster::raster(nrow=nrow(NDVI[[i]]), ncol=ncol(NDVI[[i]]))
     terra::crs(r_hr) <- terra::crs(NDVI[[i]])
     r_hr@extent <- raster::extent(NDVI[[i]])
@@ -311,11 +350,13 @@ calcWB=function(mypath,
     }
     precipitation_daily[[i]] <- terra::mask(crop, NDVI[[i]])
 
+    # Compute WB driver: if precip = 0, WB = -ETc; else WB = P - ETc
     if(mean(WR_precip[[i]]@data$layer,na.rm=T)==0){
       aggregated_cropped_subsetted_9_help=((aspect_KC*(NDVI[[i]])+y_Kc)*subs_help_DOY[1,1])*(-1)
     } else{ aggregated_cropped_subsetted_9_help=precipitation_daily[[i]]+(((aspect_KC*(NDVI[[i]])+y_Kc)*subs_help_DOY[1,1])*(-1))
     }
 
+    # Convert back to polygon for writing; store daily WB and ETc layers
     aggregated_cropped_subsetted_10=sf::st_as_sf(methods::as(aggregated_cropped_subsetted_9_help,'SpatialPolygonsDataFrame'))
     colnames(aggregated_cropped_subsetted_10)[1]=paste("X139.",i,sep="")
 
@@ -325,6 +366,7 @@ calcWB=function(mypath,
     WB_daily[[i]]=aggregated_cropped_subsetted_10
     ETC_ND_daily[[i]]=aggregated_cropped_subsetted_10
     ETC_daily[[i]]=aggregated_cropped_subsetted_10_ETC
+    # Add irrigation if present (current day; consider adjacent days to avoid double counting)
     if(length(subs_beregnung$DOY)!=0){#If there is an irrigation event on this day...
       for (j in 1:nrow(aggregated_cropped_subsetted_10)){#...check for every pixel, if...
         if(length(sf::st_intersects(aggregated_cropped_subsetted_10[j,],sf::st_as_sf(subs_beregnung))[[1]])!=0){#...on this day for this pixel there is an irrigation event
@@ -350,13 +392,15 @@ calcWB=function(mypath,
 
   print("9 WB modelling done.")
 
-  #List with irrigation amounts
+  # List with irrigation amounts
+  # Recompute irrigation component as WB - ETc to ensure consistency
   irrigation_daily=WB_daily
   for (i in min(DOY,na.rm=T):max(DOY,na.rm=T)){
     irrigation_daily[[i]][[1]]=WB_daily[[i]][[1]] - ETC_ND_daily[[i]][[1]]
   }
 
   #### 10. cumulating daily values ----
+  # Create cumulative sums over time for WB, ETc+precipitation, irrigation, ETc, and precipitation.
 
   print("10. Cumulating daily values to latest date...")
 
@@ -375,6 +419,7 @@ calcWB=function(mypath,
     ETC_cumulated[[i]][[1]]=ETC_cumulated[[i]][[1]]+ETC_cumulated[[i-1]][[1]]
     ETC_cumulated[[i]]$doy=i
 
+    # Handle missing precip rasters by carrying the first valid raster
     if(class(precipitation_cumulated[[i]])[1]!="RasterLayer"){
       precipitation_cumulated[[i]]=precipitation_cumulated[[min(DOY,na.rm=T)]]
     }
@@ -383,6 +428,7 @@ calcWB=function(mypath,
     precipitation_cumulated[[i]][[1]]$doy=i
   }
 
+  # Standardize attribute names for downstream writers
   colnames(WB_daily[[i]])[1]="values"
   colnames(ETC_ND_daily[[i]])[1]="values"
   colnames(irrigation_daily[[i]])[1]="values"
@@ -399,6 +445,8 @@ calcWB=function(mypath,
   print("10 cumulating daily values to latest date - done")
 
   #### 11. save as GeoTIFF ----
+  # Write per-DOY GeoTIFFs for WB, ETc+precipitation, Irrigation, ETc, their cumulative versions,
+  # Kc, cumulative precipitation, NDVI, and daily precipitation. Organized in subfolders.
 
   print("11. saving as GeoTIFF...")
 
@@ -478,6 +526,7 @@ calcWB=function(mypath,
       stars::write_stars(stars::st_rasterize(sf::st_as_sf(methods::as(precipitation_daily[[i]],"SpatialPolygonsDataFrame")),dx=raster::res(aggregated[[length(aggregated)]])[1],dy=raster::res(aggregated[[length(aggregated)]])[2]), paste("precipitation_DOY_",i,".tif",sep=""))
     }
     print("11 saving as GeoTIFF - done")
+    # Inform if exact target resolution could not be achieved
     if(raster::res(aggregated[[length(aggregated)]])[1]!=5 | raster::res(aggregated[[length(aggregated)]])[2]!=5){
       print(paste("Target resolution could not be reached due to small site sample. Resolution is instead: ",raster::res(aggregated[[length(aggregated)]])," m",sep=""))}
 
@@ -486,6 +535,7 @@ calcWB=function(mypath,
 
 
   #### 12. Saving as Shapefile ----
+  # Write per-DOY shapefiles for the same set of layers as in GeoTIFF outputs.
 
   print("12. saving as Shapefile...")
 
@@ -589,9 +639,10 @@ calcWB=function(mypath,
 
     if(save_RDATA==TRUE){
 
-    if(dir.exists(file.path(mypath,paste(precip_source,irrigation_efficiency,last_NDVI_0,target_res,sep="_")))==F){
-      dir.create(file.path(mypath,paste(precip_source,irrigation_efficiency,last_NDVI_0,target_res,sep="_")), showWarnings = FALSE, recursive=TRUE)
-    }
+      # Ensure parent output folder exists and save a compact .RData bundle for re-use
+      if(dir.exists(file.path(mypath,paste(precip_source,irrigation_efficiency,last_NDVI_0,target_res,sep="_")))==F){
+        dir.create(file.path(mypath,paste(precip_source,irrigation_efficiency,last_NDVI_0,target_res,sep="_")), showWarnings = FALSE, recursive=TRUE)
+      }
 
     setwd(file.path(mypath,paste(precip_source,irrigation_efficiency,last_NDVI_0,target_res,sep="_")))
 
