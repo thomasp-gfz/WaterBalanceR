@@ -1,0 +1,233 @@
+<!--
+SPDX-FileCopyrightText: 2025 GFZ Helmholtz Centre for Geosciences
+SPDX-FileCopyrightText: 2025 Thomas Piernicke <thomasp@gfz.de>
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+
+---
+title: "WaterBalanceR Data Sources"
+author: "Thomas Piernicke, GFZ Helmholtz Centre for Geosciences"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{WaterBalanceR Data Sources}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+## 1. Introduction
+
+This vignette describes the **data acquisition and preprocessing** functions included in the `WaterBalanceR` package.  
+They enable users to download, preprocess and combine meteorological, satellite and irrigation datasets used as inputs for the `calcWB()` waterbalance model.
+
+All functions can be executed independently and each produces standardized outputs that fit seamlessly into the `calcWB` workflow.
+
+---
+
+## 2. Reference evapotranspiration (ET₀)
+
+### 2.1 `DownloadET0fromDWD()`
+
+Downloads daily FAO-56 reference evapotranspiration grids from the **German Weather Service (DWD)** and extracts the daily mean ET₀ for a given area of interest (AOI).
+
+```{r dwd-et0, eval=FALSE}
+ET0 <- WaterBalanceR::DownloadET0fromDWD(
+  target_path   = "path/to/output",
+  test_site_shp = "path/to/shapefile/AOI.shp",
+  target_year   = 2023,
+  timeout       = 10000
+)
+```
+
+**Output**
+- CSV file: `DWD_ET0_<year>.csv` containing daily ET₀ values.  
+- Temporary NetCDF files are deleted after processing.
+
+---
+
+### 2.2 `DownloadET0fromArable()`
+
+Retrieves daily ET₀ data from an **Arable** account via the Arable API.  
+Requires valid login credentials.
+
+```{r arable-et0, eval=FALSE}
+ET0_arable <- WaterBalanceR::DownloadET0fromArable(
+  arable_user = "username",
+  arable_pass = "password",
+  target_year = 2023,
+  target_path = "path/to/output"
+)
+```
+
+**Output**
+- CSV file `Arable_ET0_<year>.csv` with daily reference ET₀ data.  
+- Useful when DWD data are unavailable or when comparing multiple ET₀ sources.
+
+---
+
+## 3. Precipitation data
+
+### 3.1 `DownloadRadolanfromDWD()`
+
+Downloads and processes **RADOLAN** daily precipitation grids for Germany from the DWD open data portal.  
+Each day’s raster is cropped and masked to the given AOI.
+
+```{r radolan, eval=FALSE}
+WaterBalanceR::DownloadRadolanfromDWD(
+  target_path   = "path/to/output",
+  target_year   = 2023,
+  test_site_shp = "path/to/AOI.shp",
+  timeout       = 10000
+)
+```
+
+**Output**
+- Folder `Radolan_<year>_processed_daily/` containing daily precipitation GeoTIFFs.  
+- Ready to be used as input for `calcWB()` with `precip_source = "radolan"`.
+
+---
+
+## 4. Irrigation data
+
+### 4.1 `DownloadRaindancer()`
+
+Connects to the **Raindancer** irrigation portal and downloads field-specific irrigation data for the selected period.
+
+```{r raindancer, eval=FALSE}
+WaterBalanceR::DownloadRaindancer(
+  user         = "raindancer_user",
+  password     = "raindancer_pass",
+  target_path  = "path/to/output",
+  target_year  = 2023
+)
+```
+
+**Output**
+- CSV files containing daily irrigation events and applied water volumes per field.  
+- Can be spatially joined with field shapefiles.
+
+---
+
+### 4.2 `DownloadRaindancerCombineCharts()`
+
+Combines multiple Raindancer irrigation charts into a single continuous daily time series and interpolates missing values.
+
+```{r combine-raindancer, eval=FALSE}
+WaterBalanceR::DownloadRaindancerCombineCharts(
+  input_folder = "path/to/Raindancer/charts/",
+  output_file  = "path/to/output/combined_irrigation.csv"
+)
+```
+
+**Output**
+- Combined irrigation time series as a CSV file.  
+- Ensures a continuous dataset for use in `calcWB()`.
+
+---
+
+## 5. Satellite data
+
+### 5.1 `DownloadSentinel2()`
+
+Downloads **Sentinel-2** surface reflectance data for the AOI and the target year.  
+The function automatically filters by cloud coverage and computes NDVI layers.
+
+```{r sentinel2, eval=FALSE}
+WaterBalanceR::DownloadSentinel2(
+  target_path   = "path/to/output",
+  shape_site = "path/to/AOI.shp",
+  start_date = "2025-06-01"
+  end_date = "2025-08-01"
+  max_cld     = 10
+)
+```
+
+**Output**
+- Folder `Sentinel2_<year>/` containing preprocessed NDVI GeoTIFFs.  
+- Used by `calcWB()` to derive vegetation dynamics and crop growth stages.
+
+---
+
+## 6. Integration with the WaterBalanceR workflow
+
+The functions described above act as **data preparation steps**.  
+Once executed, they populate a standardized local folder structure such as:
+
+```
+project_root/
+ ├── DWD_ET0_2023.csv
+ ├── Radolan_2023_processed_daily/
+ ├── Raindancer_combined_irrigation.csv
+ └── Sentinel2_2023/
+```
+
+These datasets can then be referenced directly when calling `calcWB()`:
+
+```{r example-integration, eval=FALSE}
+WaterBalanceR::calcWB(
+  mypath          = "project_root",
+  ET_ref          = read.csv("project_root/DWD_ET0_2023.csv"),
+  path_WR_precip  = "project_root/Radolan_2023_processed_daily",
+  irrig_sf        = "project_root/Shapefile/Buffer_36m_all_interp.shp",
+  precip_source   = "radolan"
+)
+```
+
+---
+
+## 7. Reproducibility note
+
+All examples in this vignette use placeholder paths.  
+For reproducible results, use the sample dataset provided with the package:
+
+```{r reproducibility, eval=FALSE}
+system.file("sample_data", package = "WaterBalanceR")
+```
+
+This ensures identical workflows and file structures across systems.
+
+---
+
+## 8. Session info
+
+```{r session-info}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

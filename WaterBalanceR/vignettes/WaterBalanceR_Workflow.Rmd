@@ -1,0 +1,196 @@
+<!--
+SPDX-FileCopyrightText: 2025 GFZ Helmholtz Centre for Geosciences
+SPDX-FileCopyrightText: 2025 Thomas Piernicke <thomasp@gfz.de>
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+
+---
+title: "WaterBalanceR"
+author: "Thomas Piernicke, GFZ Helmholtz Centre for Geosciences"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{WaterBalanceR Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+## 1. Introduction
+
+`WaterBalanceR` provides a modular and reproducible workflow to compute the daily soil-water balance for agricultural areas.  
+It integrates meteorological, satellite and irrigation data sources and produces ready-to-use outputs such as GeoTIFFs, shapefiles and `.RData` summaries.
+
+This vignette demonstrates the complete modelling workflow using the example dataset included in the package.
+
+---
+
+## 2. Setup and example data
+
+```{r load-package, message=FALSE}
+library(WaterBalanceR)
+```
+
+All required sample data are available inside the package directory:
+
+```{r setup-paths, eval=FALSE}
+mypath <- system.file("sample_data", package = "WaterBalanceR")
+
+shape_site <- file.path(mypath, "Shapefile/sample_2023.shp")
+et0_file   <- file.path(mypath, "DWD_ET0_2023.csv")
+precip_dir <- file.path(mypath, "Radolan_2023_processed_daily")
+irrig_file <- file.path(mypath, "Shapefile/Buffer_36m_all_interp.shp")
+```
+
+---
+
+## 3. Running the water balance model
+
+The core function `calcWB()` performs the daily water balance simulation for a given site and year.
+
+```{r run-calcWB, eval=FALSE}
+test_wb <- WaterBalanceR::calcWB(
+  mypath = mypath,
+  shape_site = shape_site,
+  target_res = 10,
+  last_NDVI_0 = 132,
+  ET_ref = read.csv(et0_file),
+  ET_ref_dl = "DWD",
+  path_WR_precip = precip_dir,
+  precip_source = "radolan",
+  irrig_sf = irrig_file,
+  irrigation_efficiency = 1.0,
+  output_year = 2023,
+  save_shape = TRUE,
+  save_geotiff = TRUE,
+  save_RDATA = TRUE
+)
+```
+
+### Expected output
+
+When executed, this call:
+- Loads and crops daily precipitation and NDVI rasters to the AOI.  
+- Computes daily evapotranspiration and irrigation contributions.  
+- Produces:  
+  - GeoTIFF maps of water balance components for each day.  
+  - Shapefiles of aggregated zones.  
+  - `.RData` files with cumulative summaries.  
+
+Console output typically includes progress logs:
+
+```
+1. Loading TIFF files...
+2. Cropping and resampling...
+3. Aggregating to target resolution...
+4. Computing daily balance...
+Model run completed.
+```
+
+---
+
+## 4. Visualizing results
+
+Once the water balance model is complete, plots can be generated with `calcWBplots()`:
+
+```{r run-plots, eval=FALSE}
+buffer20 <- file.path(mypath, "Shapefile/Buffer_5_WB.shp")
+
+WaterBalanceR::calcWBplots(
+  source_path = file.path(
+    mypath,
+    "radolan_1_132_10",
+    "WBR_radolan_1_132_10.RData"
+  ),
+  plant_doy = 109,
+  buffer20 = buffer20,
+  shape_site = shape_site
+)
+```
+
+### Output description
+
+This produces time-series plots and raster maps of:
+- Daily and cumulative precipitation.  
+- Reference evapotranspiration (ET₀) and actual ET.  
+- Irrigation inputs and water deficit.  
+- Summary figures saved as `.jpg` and `.pdf`.  
+
+---
+
+## 5. Output structure
+
+After a successful run, the output folder will typically look like:
+
+```
+sample_data/
+ ├── radolan_1_132_10/
+ │    ├── WBR_radolan_1_132_10.RData
+ │    ├── ET0_2023_doy_masked_132.tif
+ │    ├── Niederschlag_2023_doy_masked_132.tif
+ │    ├── WaterBalance_2023_doy_masked_132.tif
+ │    └── Plots/
+ │         ├── WB_daily_109.jpg
+ │         ├── ET_cumulative_2023.pdf
+ │         └── NDVI_series_2023.jpg
+```
+
+Each subfolder corresponds to a unique configuration of  
+`precip_source`, `irrigation_efficiency`, `last_NDVI_0`, and `target_res`.
+
+---
+
+## 6. Reproducibility note
+
+All example data used in this vignette are included in the package installation.  
+They can be accessed programmatically using:
+
+```{r reproducibility, eval=FALSE}
+system.file("sample_data", package = "WaterBalanceR")
+```
+
+This ensures full reproducibility of the workflow on any system.
+
+---
+
+## 7. Session info
+
+```{r session-info}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -14,28 +14,39 @@
 #' @param waitfor time to wait for loading websites. The quicker your computer and internet connection, the less it can be (integer). Default is 3.
 #' @param nozzle_diameter diameter of nozzle in mm (string, e.g. 17_8 = 17.8 mm). Default is "25_4".
 #' @param target_crs target crs
+#' @param ff_vis choose whether Firefox runs visibly ("yes") or hidden ("no", default). If visible, increase the waiting time (e.g., to about 3 seconds).
 #' @return csv file for all irrigation events of all sprinklers, that are logged in Raindancer Account.
 #' @export
 #' @importFrom magrittr %>%
 
-DownloadRaindancer=function(sourcepath,
-               targetpath,
-               port=4486L,
-               client,
-               user,
-               pass,
-               waitfor=3,
-               nozzle_diameter="25_4",
-               target_crs=32633){
+DownloadRaindancer=function(
+    sourcepath=NA,
+    targetpath=NA,
+    port=4486L,
+    client=NA,
+    user=NA,
+    pass=NA,
+    waitfor=3,
+    nozzle_diameter="25_4",
+    target_crs=32633,
+    ff_vis="no"){
 
   # Start RSelenium driver with Firefox
-  driver=RSelenium::rsDriver(browser="firefox",port=port,chromever = NULL, verbose=F, check=F)
-  driver$client$closeWindow() # Close initial session window (not needed)
-  #rm(driver)
 
   # Connect to the Selenium remote driver
-  remDr <- RSelenium::remoteDriver(browserName="firefox",port=port,remoteServerAddr="localhost")
-  remDr$open(silent=T)
+  if (ff_vis =="yes"){
+    driver=RSelenium::rsDriver(browser="firefox",port=port,chromever = NULL, verbose=F, check=F)
+    driver$client$closeWindow() # Close initial session window (not needed)
+    #rm(driver)
+
+    # Connect to the Selenium remote driver
+    remDr <- RSelenium::remoteDriver(browserName="firefox",port=port,remoteServerAddr="localhost")
+    remDr$open(silent=T)
+
+  }  else if (ff_vis =="no"){
+    driver=RSelenium::rsDriver(browser="firefox",port=port,chromever = NULL, verbose=F, check=F, extraCapabilities = list("moz:firefoxOptions" = list(args = list("--headless"))))
+    remDr <- driver$client
+  }
 
   # Navigate to Raindancer login page
   remDr$navigate("https://portal.myraindancer.com/Login/Login.aspx")
@@ -57,10 +68,9 @@ DownloadRaindancer=function(sourcepath,
   passwd <- remDr$findElement(using = "id", value = "password_field")
   passwd$clearElement()
   passwd$sendKeysToElement(list(as.character(pass), "\uE007"))
-
+  Sys.sleep(waitfor)
   # --- SCRAPE SPRINKLER LIST ---
   #get names and links for sprinklers and combine them to a table
-  Sys.sleep(waitfor) # wait for dashboard to load
 
   # Get sprinkler table (HTML element with irrigator grid)
   get_name_rain=remDr$findElement(using="xpath", value="//*[@id='ctl00_CPH_MainContent_IrrigatorGrid_GridData']")
@@ -104,13 +114,13 @@ DownloadRaindancer=function(sourcepath,
     # Download coordinate protocol
     dwld_coordprotokoll_Button = remDr$findElement("id", value="CPH_MainContent_ExportToExcelCoordinates_btn")
     dwld_coordprotokoll_Button$clickElement()
-    print(paste("Download",i,"/",nrow(regner_tabelle),"done",sep=" "))
+    message(paste("Download",i,"/",nrow(regner_tabelle),"done",sep=" "))
   }
 
   # --- LOGOUT ---
   logout_button = remDr$findElement("id", value="navbarLeftLogoutContainer")
   logout_button$clickElement()
-  print("logged out")
+  message("logged out")
 
   # Close Selenium windows and server
   remDr$closeWindow()#close session
@@ -118,7 +128,7 @@ DownloadRaindancer=function(sourcepath,
   #driver$server$stop()#close Server
   #driver$client$closeServer()#close Server
   driver[["server"]]$stop()
-  print("drivers closed")
+  message("drivers closed")
 
   # --- FILE MANAGEMENT ---
 
@@ -128,7 +138,7 @@ DownloadRaindancer=function(sourcepath,
   # Filter only relevant recently downloaded files (protocols, last ~10 minutes)
   list_downloaded_files_recent=list_downloaded_files[is.na(stringr::str_match(list_downloaded_files,"Einsatzprotokoll"))==F |
                                                        is.na(stringr::str_match(list_downloaded_files,"Koordinatenprotokoll"))==F &
-                                                       (strptime(substr(list_downloaded_files,nchar(list_downloaded_files)-21,nchar(list_downloaded_files)-5),format='%Y-%m-%d_%H%M%S')>Sys.time()-60000)==T]
+                                                       (strptime(substr(list_downloaded_files,nchar(list_downloaded_files)-21,nchar(list_downloaded_files)-5),format='%Y-%m-%d_%H%M%S')>Sys.time()-60000)==TRUE]
 
   # Create timestamped subfolder for file storage
   folder_time=gsub("-","_",gsub(":","_",gsub(" ","_",substr(Sys.time(),1,19))))
@@ -142,9 +152,9 @@ DownloadRaindancer=function(sourcepath,
 
   # Remove original files from Firefox download folder
   file.remove(paste(sourcepath,list_downloaded_files_recent,sep="/"))
-  print("files successfully copied")
+  message("files successfully copied")
 
-  print("Done")
+  message("Done")
 
   # --- POSTPROCESSING: COMBINE ALL FILES INTO ONE DATASET ---
 
@@ -155,10 +165,10 @@ DownloadRaindancer=function(sourcepath,
 
   # Run function to combine CSVs → shapefiles
   WaterBalanceR::DownloadRaindancerCombineCharts(sourcepath=paste(targetpath,"/downloaded_files/",sep=""),
-                                           targetpath=paste(targetpath,"/Beregnung_Shapefile/",sep=""),
-                                           start_date=paste(substr(Sys.Date(),1,4),"-01-01",sep=""),
-                                           nozzle_diameter=nozzle_diameter,
-                                           target_crs=target_crs)
+                                                 targetpath=paste(targetpath,"/Beregnung_Shapefile/",sep=""),
+                                                 start_date=paste(substr(Sys.Date(),1,4),"-01-01",sep=""),
+                                                 nozzle_diameter=nozzle_diameter,
+                                                 target_crs=target_crs)
 }
 
 

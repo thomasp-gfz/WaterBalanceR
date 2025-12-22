@@ -1,0 +1,21 @@
+citHeader("Please cite WaterBalanceR as follows:")
+
+bibentry(
+  bibtype = "Manual",
+  title = "WaterBalanceR: An R Package for Estimating Water Balance for Starch Potatoes in Germany Based on NDVI Values from UAV and Satellite Data",
+  author = person(
+    given = "Thomas",
+    family = "Piernicke",
+    email = "thomasp@gfz.de",
+    comment = c(
+      ORCID = "0009-0006-9760-5162",
+      affiliation = "Helmholtz Centre for Geosciences"
+    )
+  ),
+  year = "2025",
+  note = "R package version 0.1.17. See also the underlying model and experiment description (doi:10.3390/rs17183227).",
+  doi = "10.5281/zenodo.15046338",
+  url = "https://doi.org/10.5281/zenodo.15046338"
+)
+
+

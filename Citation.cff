@@ -1,12 +1,50 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+title: WaterBalanceR
+message: >-
+  An R-Package for Estimating Water Balance for Starch
+  Potatoes in Germany Based on NDVI Values Provided by
+  Sentinel-2, PlanetScope or DJI Phantom 4 Multispectral UAV
+type: software
 authors:
-- family-names: "Piernicke"
-  given-names: "Thomas"
-  orcid: "https://orcid.org/0009-0006-9760-5162"
-title: "WaterBalanceR: An R-Package for Estimating Water Balance for Starch Potatoes in Germany Based on NDVI Values Provided by Sentinel-2, PlanetScope or DJI Phantom 4 Multispectral UAV"
-version: 0.1.15
-doi: 10.5281/zenodo.15046338
-date-released: 2025-03-19
-license: "AGPL-3.0-only"
-url: "https://github.com/thomasp-gfz/WaterBalanceR_JOSS"
+  - given-names: Thomas
+    family-names: Piernicke
+    email: thomasp@gfz.de
+    orcid: 'https://orcid.org/0009-0006-9760-5162'
+    affiliation: Helmholtz Centre for Geosciences
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.15046338
+    description: DOI of actual Software Package
+  - type: doi
+    value: 10.3390/rs17183227
+    description: Paper of underlying Model and Experiment
+repository-code: >-
+  https://git.gfz-potsdam.de/agrisens_demmin_40/waterbalancemodel
+repository: >-
+  https://github.com/thomasp-gfz/WaterBalanceR_JOSS/tree/main
+abstract: >
+  WaterBalanceR is an open-source R package for estimating
+  spatially distributed daily water balance for starch
+  potatoes in Germany.  
+
+  It combines NDVI data from UAVs (DJI Phantom 4
+  Multispectral) or satellites (PlanetScope, Sentinel-2)
+  with meteorological data and irrigation logs to support
+  precision irrigation management.
+keywords:
+  - R
+  - irrigation
+  - water balance
+  - starch potatoes
+  - DEMMIN
+  - Sentinel-2
+  - PlanetScope
+  - DJI Phantom 4 Multispectral
+  - Arable Mark 2
+  - NDVI
+license: AGPL-3.0-only
+version: 0.1.19
+date-released: '2025-12-19'

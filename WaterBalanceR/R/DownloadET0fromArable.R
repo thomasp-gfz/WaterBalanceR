@@ -14,10 +14,15 @@
 #' @export
 
 DownloadET0fromArable=function(user_name=NA,
-                        pwd=NA,
-                        start_date=NA,
-                        end_date=NA,
-                        shape_site=NA){
+                               pwd=NA,
+                               start_date=NA,
+                               end_date=NA,
+                               shape_site=NA){
+
+  # Make target size an sf-object, if it still a character string
+  if(inherits(shape_site,"character")==TRUE){
+    shape_site=sf::st_read(shape_site)
+  }
 
   ## Request devices from Arable API
   devices=httr::GET("https://api.arable.cloud/api/v2/devices",
@@ -34,25 +39,25 @@ DownloadET0fromArable=function(user_name=NA,
   ### Request daily Arable data ----
   daily_Arable_list=list(NA) # store full daily data
   daily_Arable_list_ET0=list(NA) # store only ET0 + coordinates + date
-    for (i in 1:length(devices$items.name)){
-      # Request daily data from API for each device and date range
-      daily_data=httr::GET(paste("https://api.arable.cloud/api/v2/data/daily?device=",devices$items.name[i],"&start_time=",start_date,"&end_time=",end_date,"&limit=10000&temp=C&order=asc&pres=kp&ratio=dec&size=mm&speed=mps&vol=l&volumetric_soil_moisture_unit=millimeter_per_meter",sep=""),
-                           httr::authenticate(
-                             user=user_name,
-                             password=pwd,
-                             type="basic"
-                           ))
+  for (i in 1:length(devices$items.name)){
+    # Request daily data from API for each device and date range
+    daily_data=httr::GET(paste("https://api.arable.cloud/api/v2/data/daily?device=",devices$items.name[i],"&start_time=",start_date,"&end_time=",end_date,"&limit=10000&temp=C&order=asc&pres=kp&ratio=dec&size=mm&speed=mps&vol=l&volumetric_soil_moisture_unit=millimeter_per_meter",sep=""),
+                         httr::authenticate(
+                           user=user_name,
+                           password=pwd,
+                           type="basic"
+                         ))
 
-      # Parse JSON into data frame and reorder columns
-      daily_Arable_list[[i]]=as.data.frame(jsonlite::fromJSON(httr::content(daily_data,as="text",encoding="UTF-8")))
-      daily_Arable_list[[i]]=daily_Arable_list[[i]][,order(names(daily_Arable_list[[i]]))]
-      # Extract only ET0, lat, lon, and date
-      daily_Arable_list_ET0[[i]]=as.data.frame(cbind(daily_Arable_list[[i]]$et,daily_Arable_list[[i]]$lat,daily_Arable_list[[i]]$long,daily_Arable_list[[i]]$time))
-        # Set column names if data are available
-        if(nrow(daily_Arable_list_ET0[[i]])>0){
-        colnames(daily_Arable_list_ET0[[i]])=c("ET0","lat","lon","date")
-        }
+    # Parse JSON into data frame and reorder columns
+    daily_Arable_list[[i]]=as.data.frame(jsonlite::fromJSON(httr::content(daily_data,as="text",encoding="UTF-8")))
+    daily_Arable_list[[i]]=daily_Arable_list[[i]][,order(names(daily_Arable_list[[i]]))]
+    # Extract only ET0, lat, lon, and date
+    daily_Arable_list_ET0[[i]]=as.data.frame(cbind(daily_Arable_list[[i]]$et,daily_Arable_list[[i]]$lat,daily_Arable_list[[i]]$long,daily_Arable_list[[i]]$time))
+    # Set column names if data are available
+    if(nrow(daily_Arable_list_ET0[[i]])>0){
+      colnames(daily_Arable_list_ET0[[i]])=c("ET0","lat","lon","date")
     }
+  }
   # Assign device names to list elements
   names(daily_Arable_list)=devices$items.name
   names(daily_Arable_list_ET0)=devices$items.name
@@ -75,32 +80,32 @@ DownloadET0fromArable=function(user_name=NA,
     # Remove rows with missing values
     daily_Arable_list_ET0[[j]]=stats::na.omit(daily_Arable_list_ET0[[j]])#discard NAs
 
-  if(length(daily_Arable_list_ET0[[j]])>0){
+    if(length(daily_Arable_list_ET0[[j]])>0){
 
-    # Convert coordinates to spatial points
-    coord_Arable=sp::SpatialPoints(coords = cbind(as.numeric(daily_Arable_list_ET0[[j]]$lon),as.numeric(daily_Arable_list_ET0[[j]]$lat)))#make spatial points out of it
-    coord_Arable_sf=sf::st_as_sf(sp::SpatialPoints(coords = cbind(as.numeric(daily_Arable_list_ET0[[j]]$lon),as.numeric(daily_Arable_list_ET0[[j]]$lat))))#make sf out of sp
-    sf::st_crs(coord_Arable_sf)=sf::st_crs(shape_site)#4326 # set CRS to AOI CRS
-    coord_Arable_sf=sf::st_transform(coord_Arable_sf,sf::st_crs(shape_site)) # reproject to AOI CRS
+      # Convert coordinates to spatial points
+      coord_Arable=sp::SpatialPoints(coords = cbind(as.numeric(daily_Arable_list_ET0[[j]]$lon),as.numeric(daily_Arable_list_ET0[[j]]$lat)))#make spatial points out of it
+      coord_Arable_sf=sf::st_as_sf(sp::SpatialPoints(coords = cbind(as.numeric(daily_Arable_list_ET0[[j]]$lon),as.numeric(daily_Arable_list_ET0[[j]]$lat))))#make sf out of sp
+      sf::st_crs(coord_Arable_sf)=sf::st_crs(shape_site)#4326 # set CRS to AOI CRS
+      coord_Arable_sf=sf::st_transform(coord_Arable_sf,sf::st_crs(shape_site)) # reproject to AOI CRS
 
-    # Add ET0, date, and device info as attributes
-    coord_Arable_sf$ET0=as.numeric(daily_Arable_list_ET0[[j]]$ET0)#add ET0
-    coord_Arable_sf$date=as.Date(daily_Arable_list_ET0[[j]]$date)#add date
-    coord_Arable_sf$device=devices$items.name[j]#add device name
+      # Add ET0, date, and device info as attributes
+      coord_Arable_sf$ET0=as.numeric(daily_Arable_list_ET0[[j]]$ET0)#add ET0
+      coord_Arable_sf$date=as.Date(daily_Arable_list_ET0[[j]]$date)#add date
+      coord_Arable_sf$device=devices$items.name[j]#add device name
 
-    # Create 500 m buffer around AOI
-    shape_site_buffer=sf::st_buffer(shape_site,dist=500)#create buffer of 500 m around site
-    sf::st_intersects(coord_Arable_sf[1,],shape_site_buffer)#check for intersections of points and buffer of site
+      # Create 500 m buffer around AOI
+      shape_site_buffer=sf::st_buffer(shape_site,dist=500)#create buffer of 500 m around site
+      sf::st_intersects(coord_Arable_sf[1,],shape_site_buffer)#check for intersections of points and buffer of site
 
-    # For each measurement point, check if it lies inside the buffer
-    for (i in 1:nrow(coord_Arable_sf)){
-      if(length(sf::st_intersects(coord_Arable_sf[i,][[1]],shape_site_buffer)[[1]])==1){
-        intersec_points_buff[names(intersec_points_buff)==coord_Arable_sf$date[i]][[1]]$ET0[j]=coord_Arable_sf[i,]$ET0
-        intersec_points_buff[names(intersec_points_buff)==coord_Arable_sf$date[i]][[1]]$date[j]=as.character(coord_Arable_sf[i,]$date)
-        intersec_points_buff[names(intersec_points_buff)==coord_Arable_sf$date[i]][[1]]$device[j]=devices$items.name[j]
+      # For each measurement point, check if it lies inside the buffer
+      for (i in 1:nrow(coord_Arable_sf)){
+        if(length(sf::st_intersects(coord_Arable_sf[i,][[1]],shape_site_buffer)[[1]])==1){
+          intersec_points_buff[names(intersec_points_buff)==coord_Arable_sf$date[i]][[1]]$ET0[j]=coord_Arable_sf[i,]$ET0
+          intersec_points_buff[names(intersec_points_buff)==coord_Arable_sf$date[i]][[1]]$date[j]=as.character(coord_Arable_sf[i,]$date)
+          intersec_points_buff[names(intersec_points_buff)==coord_Arable_sf$date[i]][[1]]$device[j]=devices$items.name[j]
+        }
       }
     }
-  }
   }
 
   # Create output data frame: average ET0 per date and DOY

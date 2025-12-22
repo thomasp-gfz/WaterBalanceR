@@ -14,15 +14,16 @@
 #' @export
 
 DownloadET0fromDWD=function(target_path=NA,
-                          test_site_shp=NA,
-                          target_year=NA,
-                          timeout=1000){
+                            test_site_shp=NA,
+                            target_year=NA,
+                            timeout=1000){
 
   # Store current timeout option and set a new one for the download
-  timeout_def=getOption('timeout')
-  options(timeout=timeout)
+  old_to=getOption('timeout')
+  on.exit(options(timeout = old_to))
+  options(timeout = timeout)
 
-  print("Download ET_ref data from German Weather Service (DWD)...")
+  message("Download ET_ref data from German Weather Service (DWD)...")
 
   # Define base directory for DWD open data (FAO evapotranspiration)
   dir_ET_fao="https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/evaporation_fao/"
@@ -39,10 +40,7 @@ DownloadET0fromDWD=function(target_path=NA,
   # Download NetCDF file from DWD server
   try(utils::download.file(paste(dir_ET_fao,filename_fao,sep=""), tf_fao,mode = 'wb'))
 
-  # Reset timeout option to default
-  options(timeout=timeout_def)
-
-  print("Download successfully finished. Transforming file format from *.nc to *.csv...")
+  message("Download successfully finished. Transforming file format from *.nc to *.csv...")
 
   ### Process downloaded NetCDF into CSV with daily ET0 values for the AOI
   mypath=paste(target_path,"/ET_fao/",sep="")
@@ -97,5 +95,5 @@ DownloadET0fromDWD=function(target_path=NA,
 
   # Return ET0 dataframe
   return(ET0)
-  print("Fileformat successfully transformed and saved.")
+  message("Fileformat successfully transformed and saved.")
 }

@@ -1,50 +1,55 @@
 Package: WaterBalanceR
 Type: Package
-Title: Calculating water balance from NDVI-imagines
-Version: 0.1.16
-DOI: 10.5281/zenodo.15046338
-Author: Thomas Piernicke
-Maintainer: Thomas Piernicke <thomasp@gfz-potsdam.de>
-Description: Calculating water balance from NDVI images, DWD reference evapotranspiration and DWD Radolan precipitation data
-    Use four spaces when indenting paragraphs within the Description.
-License: AGPL-3.0-only
+Title: Calculate High Resolution Water Balance of Starch Potatoes
+Version: 0.1.19
+Authors@R: 
+    person(
+      given = "Thomas",
+      family = "Piernicke",
+      email = "thomasp@gfz.de",
+      role = c("aut", "cre"),
+      comment = c(ORCID = "0009-0006-9760-5162")
+    )
+Description: Calculates the water balance of starch potatoes from Normalized Distance Vegetation Index (NDVI) images, German Weather Service (DWD) reference evapotranspiration, German Weather Service RADOLAN precipitation data and irrigation information. For more details see Piernicke et al. (2025) <doi:10.3390/rs17183227>.
+License: AGPL-3
 Encoding: UTF-8
 LazyData: true
-Imports: ncdf4,
-          raster,
-          sf,
-          zoo,
-          lubridate,
-          stars,
-          ggplot2,
-          tidyr,
-          rdwd,
-          dwdradar,
-          R.utils,
-          utils,
-          terra,
-          foreach,
-          parallel,
-          doParallel,
-          gridExtra,
-          httr,
-          httr2,
-          devtools,
-          RColorBrewer,
-          tidyverse,
-          RSelenium,
-          stringr,
-          rvest,
-          sp,
-          geosphere,
-          RCurl,
-	  grDevices,
-	  tidyselect,
-	  openeo,
-	  magrittr,
-	  jsonlite,
-	  dplyr,
-	  readxl,
-	  scales,
-	  methods
-RoxygenNote: 7.3.2
+Depends: R (>= 4.1.0)
+Imports: 
+    raster,
+    sf,
+    janitor,
+    zoo,
+    lubridate,
+    stars,
+    ggplot2,
+    tidyr,
+    rdwd,
+    utils,
+    terra,
+    gridExtra,
+    httr,
+    RSelenium,
+    stringr,
+    rvest,
+    sp,
+    geosphere,
+    RCurl,
+    grDevices,
+    tidyselect,
+    openeo,
+    magrittr,
+    jsonlite,
+    dplyr,
+    readxl,
+    scales,
+    methods,
+    rlang
+URL: https://doi.org/10.5281/zenodo.15046338,
+     https://github.com/thomasp-gfz/WaterBalanceR_JOSS
+RoxygenNote: 7.3.3
+VignetteBuilder: knitr
+Suggests:
+    knitr,
+    rmarkdown
+
