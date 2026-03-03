@@ -31,7 +31,7 @@ You can install the latest development version directly from GitHub:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("thomasp-gfz/WaterBalanceR_JOSS/WaterBalanceR")
+devtools::install_github("thomasp-gfz/WaterBalanceR_Git/WaterBalanceR")
 ```
 
 Or from CRAN (once released):

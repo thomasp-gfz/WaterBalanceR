@@ -2,7 +2,7 @@
 ## SPDX-FileCopyrightText: 2025 Thomas Piernicke <thomasp@gfz.de>
 ## SPDX-License-Identifier: AGPL-3.0-only
 ## DOI: https://doi.org/10.5281/zenodo.15046338
-## This software is part of an active research project and currently under peer review at the Journal of Open Source Software (JOSS). Please cite appropriately if reused.
+## Please cite appropriately if reused.
 
 
 # WaterBalanceR

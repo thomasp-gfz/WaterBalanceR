@@ -1,5 +1,13 @@
 # WaterBalanceR – History / NEWS
 
+## 0.1.20 (2026-03-03)
+
+**General settings:**
+
+- Fixed minor typo and Bugs
+
+---
+
 ## 0.1.19 (2025-12-15)
 
 **General settings:**

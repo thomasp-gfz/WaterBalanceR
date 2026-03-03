@@ -54,7 +54,7 @@ calcWB=function(mypath,
 
   start.time = Sys.time() # For simple runtime logging
 
-  oldwd <- getwd()
+  oldwd = getwd()
   on.exit(setwd(oldwd))
 
   target_res=target_res # Explicitly keep target_res as given
@@ -211,8 +211,8 @@ calcWB=function(mypath,
     aggregated_cropped_subsetted_4[[i]]@data@values[2]=0
   }
 
-  aggregated_cropped_subsetted_5 <- raster::stack(aggregated_cropped_subsetted_4)
-  NDVI <- raster::approxNA(aggregated_cropped_subsetted_5)#NDVI Subset
+  aggregated_cropped_subsetted_5 = raster::stack(aggregated_cropped_subsetted_4)
+  NDVI = raster::approxNA(aggregated_cropped_subsetted_5)#NDVI Subset
 
   for(i in 1:DOY[length(DOY)]){
     NDVI[[i]]@data@values[1]=NA
@@ -350,18 +350,18 @@ calcWB=function(mypath,
     message(i)
 
     # Rasterize precipitation layer onto NDVI grid (handle projection & extent)
-    r_hr <- raster::raster(nrow=nrow(NDVI[[i]]), ncol=ncol(NDVI[[i]]))
-    terra::crs(r_hr) <- terra::crs(NDVI[[i]])
-    r_hr@extent <- raster::extent(NDVI[[i]])
+    r_hr = raster::raster(nrow=nrow(NDVI[[i]]), ncol=ncol(NDVI[[i]]))
+    terra::crs(r_hr) = terra::crs(NDVI[[i]])
+    r_hr@extent = raster::extent(NDVI[[i]])
     if(names(WR_precip[[i]]@data)!="layer"){names(WR_precip[[i]]@data)="layer"}
-    rast_res <- terra::rasterize(WR_precip[[i]],r_hr,field="layer")
+    rast_res = terra::rasterize(WR_precip[[i]],r_hr,field="layer")
     if(precip_source=="furuno"){
-      crop <- terra::crop(rast_res, NDVI[[i]],snap="out")
+      crop = terra::crop(rast_res, NDVI[[i]],snap="out")
     }
     if(precip_source=="radolan"){
-      crop <- terra::crop(rast_res, NDVI[[i]])
+      crop = terra::crop(rast_res, NDVI[[i]])
     }
-    precipitation_daily[[i]] <- terra::mask(crop, NDVI[[i]])
+    precipitation_daily[[i]] = terra::mask(crop, NDVI[[i]])
 
     # Compute WB driver: if precip = 0, WB = -ETc; else WB = P - ETc
     if(mean(WR_precip[[i]]@data$layer,na.rm=T)==0){

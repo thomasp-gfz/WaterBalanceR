@@ -13,7 +13,7 @@ bibentry(
     )
   ),
   year = "2025",
-  note = "R package version 0.1.17. See also the underlying model and experiment description (doi:10.3390/rs17183227).",
+  note = "R package version 0.1.20. See also the underlying model and experiment description (doi:10.3390/rs17183227).",
   doi = "10.5281/zenodo.15046338",
   url = "https://doi.org/10.5281/zenodo.15046338"
 )

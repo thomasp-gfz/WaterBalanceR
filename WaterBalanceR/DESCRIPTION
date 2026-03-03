@@ -1,7 +1,7 @@
 Package: WaterBalanceR
 Type: Package
 Title: Calculate High Resolution Water Balance of Starch Potatoes
-Version: 0.1.19
+Version: 0.1.20
 Authors@R: 
     person(
       given = "Thomas",
