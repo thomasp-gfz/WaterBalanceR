@@ -5,6 +5,7 @@
 **General settings:**
 
 - Fixed minor typo and Bugs
+- Revision of Readme.md
 
 ---
 
