@@ -46,7 +46,7 @@ Imports:
     methods,
     rlang
 URL: https://doi.org/10.5281/zenodo.15046338,
-     https://github.com/thomasp-gfz/WaterBalanceR_JOSS
+     https://github.com/thomasp-gfz/WaterBalanceR
 RoxygenNote: 7.3.3
 VignetteBuilder: knitr
 Suggests:

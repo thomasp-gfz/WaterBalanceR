@@ -34,7 +34,7 @@ You can install the latest development version directly from GitHub:
 devtools::install_github("thomasp-gfz/WaterBalanceR_Git/WaterBalanceR")
 ```
 
-Or from CRAN (once released):
+Or from CRAN:
 
 ```r
 install.packages("WaterBalanceR")
