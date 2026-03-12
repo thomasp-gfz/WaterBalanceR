@@ -1,5 +1,13 @@
 # WaterBalanceR – History / NEWS
 
+## 0.1.21 (2026-03-12)
+
+**General settings:**
+
+- Fixed bug in DownloadSentinel2.R, which could have caused an unwanted renaming of files and folders
+
+---
+
 ## 0.1.20 (2026-03-03)
 
 **General settings:**

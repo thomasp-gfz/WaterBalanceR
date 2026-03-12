@@ -17,7 +17,7 @@ DownloadSentinel2=function(target_path=NA,
                            shape_site=NA,
                            start_date=NA,
                            end_date=NA,
-                           limit=1000,
+                           limit=200,
                            max_cld=10){
 
   # Build ISO-8601 start/stop timestamps for STAC time filter
