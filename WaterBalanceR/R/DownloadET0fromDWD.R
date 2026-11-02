@@ -25,6 +25,11 @@ DownloadET0fromDWD=function(target_path=NA,
 
   message("Download ET_ref data from German Weather Service (DWD)...")
 
+  # Load shapefile as sf object if not already
+  if(class(test_site_shp)[1]!="sf"){
+    test_site_shp=sf::st_read(test_site_shp)
+  }
+
   # Define base directory for DWD open data (FAO evapotranspiration)
   dir_ET_fao="https://opendata.dwd.de/climate_environment/CDC/grids_germany/daily/evaporation_fao/"
 
@@ -54,25 +59,28 @@ DownloadET0fromDWD=function(target_path=NA,
   cropped=list(NA)
 
   # Detect variable name: sometimes "et0", sometimes "eta_fao"
-  Varname_ET0=ifelse(class(try(as.data.frame(matrix(NA,raster::raster(paste(mypath,nc_List,sep=""),varname="et0")@file@nbands,2)),silent=T))!="try-error","et0","eta_fao")
+  #Varname_ET0=ifelse(class(try(as.data.frame(matrix(NA,raster::raster(paste(mypath,nc_List,sep=""),varname="et0")@file@nbands,2)),silent=T))!="try-error","et0","eta_fao")
+  Varname_ET0=terra::varnames(terra::rast(paste(mypath,nc_List,sep="")))
 
   # Create empty data frame to hold ET0 values and dates
-  ET0=as.data.frame(matrix(NA,raster::raster(paste(mypath,nc_List,sep=""),varname=Varname_ET0)@file@nbands,2))
+  #ET0=as.data.frame(matrix(NA,raster::raster(paste(mypath,nc_List,sep=""),varname=Varname_ET0)@file@nbands,2))
+  ET0=as.data.frame(matrix(NA,terra::nlyr(terra::rast(paste(mypath,nc_List,sep=""))),2))
 
   ### Extract daily ET0 values (FAO56 method) ----
-  for(i in 1:raster::raster(paste(mypath,nc_List,sep="")[1],varname=Varname_ET0)@file@nbands){
+  #for(i in 1:raster::raster(paste(mypath,nc_List,sep="")[1],varname=Varname_ET0)@file@nbands){
+  for(i in 1:terra::nlyr(terra::rast(paste(mypath,nc_List,sep="")))){
     # Read raster band for day i
-    rast_WR[[i]]=raster::raster(paste(mypath,nc_List,sep="")[1],varname=Varname_ET0,band=i)
+    #rast_WR[[i]]=raster::raster(paste(mypath,nc_List,sep="")[1],varname=Varname_ET0,band=i)
+    rast_WR[[i]]=terra::rast(paste(mypath,nc_List,sep=""))[[i]]
 
     # Extract date for this band
-    ET0[i,2]=as.character(rast_WR[[i]]@z[[1]])
-    # Load shapefile as sf object if not already
-    if(class(test_site_shp)[1]!="sf"){
-      test_site_shp=sf::st_read(test_site_shp)
-    }
+    #ET0[i,2]=as.character(rast_WR[[i]]@z[[1]])
+    ET0[i,2]=as.character(terra::time(rast_WR[[i]]))
 
     # Reproject raster to CRS of shapefile
-    rast_WR[[i]]=raster::projectRaster(rast_WR[[i]],crs=terra::crs(paste("epsg:",substr(sf::st_crs(test_site_shp)[[2]],nchar(sf::st_crs(test_site_shp)[[2]])-6,nchar(sf::st_crs(test_site_shp)[[2]])-2),sep=""), describe=FALSE))
+    #rast_WR[[i]]=raster::projectRaster(rast_WR[[i]],crs=terra::crs(paste("epsg:",substr(sf::st_crs(test_site_shp)[[2]],nchar(sf::st_crs(test_site_shp)[[2]])-6,nchar(sf::st_crs(test_site_shp)[[2]])-2),sep=""), describe=FALSE))
+    rast_WR[[i]]=terra::project(rast_WR[[i]],paste0("EPSG:",substr(sf::st_crs(test_site_shp)[[2]],nchar(sf::st_crs(test_site_shp)[[2]])-6,nchar(sf::st_crs(test_site_shp)[[2]])-2)))
+    #crs(rast_WR[[i]])=terra::crs(paste("epsg:",substr(sf::st_crs(test_site_shp)[[2]],nchar(sf::st_crs(test_site_shp)[[2]])-6,nchar(sf::st_crs(test_site_shp)[[2]])-2),sep=""), describe=FALSE)
 
     # Force CRS definition
     terra::crs(rast_WR[[i]])=terra::crs(paste("epsg:",substr(sf::st_crs(test_site_shp)[[2]],nchar(sf::st_crs(test_site_shp)[[2]])-6,nchar(sf::st_crs(test_site_shp)[[2]])-2),sep=""), describe=FALSE)
@@ -81,10 +89,13 @@ DownloadET0fromDWD=function(target_path=NA,
     cropped[[i]]=terra::crop(rast_WR[[i]],test_site_shp)
 
     # Compute mean ET0 value within AOI
-    ET0[i,1]=mean(cropped[[i]]@data@values,na.rm=T)
+    #ET0[i,1]=mean(cropped[[i]]@data@values,na.rm=T)
+    ET0[i,1]=mean(terra::values(cropped[[i]]),na.rm=T)/10
 
     # Release memory
     rast_WR[[i]]=NA
+
+    message(paste("Cropping reference ET raster for DOY: ", i, " from ", terra::nlyr(terra::rast(paste(mypath,nc_List,sep=""))), sep=""))
   }
 
   # Save results as CSV (daily ET0 values + dates)

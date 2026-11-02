@@ -117,13 +117,14 @@ calcWB=function(mypath,
   }
 
   for (i in 1:length(DOY)){#Crop and mask to shapefile of AOI
-    cropped[[DOY[i]]] = terra::crop(originals[[DOY[i]]],shape_site)
+    cropped[[DOY[i]]] = terra::crop(originals[[DOY[i]]],shape_site,snap="out")
     subsetted[[DOY[i]]] = terra::mask(cropped[[DOY[i]]], shape_site)
   }
 
   subsetted_resampled=subsetted
   for(i in 1:(length(DOY)-1)){#resampling
-    subsetted_resampled[[DOY[i+1]]]=terra::resample(subsetted_resampled[[DOY[i+1]]], subsetted_resampled[[DOY[i]]], method='bilinear')
+    subsetted_resampled[[DOY[i+1]]]=terra::resample(subsetted_resampled[[DOY[i+1]]], subsetted_resampled[[DOY[i]]],threads=TRUE, method='bilinear')
+    subsetted_resampled[[DOY[i]]]@data@values[subsetted_resampled[[DOY[i]]]@data@values=="NaN"]=NA
   }
 
   message("3. Crop, mask and resampling to site outlines done - aggregating files to target resolution...")
@@ -133,9 +134,24 @@ calcWB=function(mypath,
 
   for (i in 1:length(DOY)){
     aggregated[[DOY[i]]]=terra::aggregate(subsetted_resampled[[DOY[i]]],fact=target_res/raster::res(subsetted_resampled[[DOY[i]]]))
-    aggregated_cropped[[DOY[i]]] = terra::crop(aggregated[[DOY[i]]],shape_site)
+    aggregated_cropped[[DOY[i]]] = terra::crop(aggregated[[DOY[i]]],shape_site,snap="out")
     aggregated_cropped_subsetted[[DOY[i]]] = terra::mask(aggregated_cropped[[DOY[i]]], shape_site)
+    aggregated_cropped_subsetted[[DOY[i]]]@data@values[aggregated_cropped_subsetted[[DOY[i]]]@data@values=="NaN"]=NA
     aggregated_cropped[[DOY[i]]]=NA # Free intermediate to save memory
+  }
+
+  # define indices of non-null entries
+  non_null_indices <- which(!sapply(aggregated_cropped_subsetted, is.null))
+
+  # extract value vectors of non-null entries
+  values_list <- lapply(aggregated_cropped_subsetted[non_null_indices], function(x) x@data@values)
+
+  # calculate mask: TRUE, where all vectors are non-NA
+  non_na_mask <- Reduce("&", lapply(values_list, function(v) !is.na(v)))
+
+  # set NA on all positions, where mask is FALSE
+  for (i in non_null_indices) {
+    aggregated_cropped_subsetted[[i]]@data@values[!non_na_mask] <- NA
   }
 
   aggregated_cropped_subsetted_2=aggregated_cropped_subsetted
@@ -158,7 +174,7 @@ calcWB=function(mypath,
     } else if(substr(NDVI_List[[i]],10,13)=="Plan"){
       NDVI_source="Planet"
 
-      # Planet quartic correction
+      # Planet polynomial correction
       aggregated_cropped_subsetted_2[[DOY[i]]]=
         -1*(9.0673*aggregated_cropped_subsetted[[DOY[i]]]^4)+
         (21.7178*aggregated_cropped_subsetted[[DOY[i]]]^3)-
@@ -235,7 +251,7 @@ calcWB=function(mypath,
   } else{
 
     if(ET_ref_dl=="DWD"){
-      ET_ref=DownloadET0fromDWD(target_path=mypath,
+      ET_ref=WaterBalanceR::DownloadET0fromDWD(target_path=mypath,
                                 test_site_shp=shape_site,
                                 target_year=output_year)
       ET_ref[,2]=lubridate::yday(ET_ref[,2])
@@ -335,7 +351,10 @@ calcWB=function(mypath,
   ETC_daily=list(NA)
   irrigation=list(NA)
 
-  irrig_sf=sf::st_read(irrig_sf)
+  # Make irrig_sf an sf-object, if it still a character string
+  if(inherits(irrig_sf,"character")==TRUE){
+    irrig_sf=sf::st_read(irrig_sf)
+  }
 
   for (i in min(DOY,na.rm=T):max(DOY,na.rm=T)){
     subs_help_DOY=subset(ET0_3,ET0_3$DOY==i) # Daily ET0 for day i

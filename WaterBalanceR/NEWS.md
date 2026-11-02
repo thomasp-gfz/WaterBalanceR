@@ -1,5 +1,18 @@
 # WaterBalanceR – History / NEWS
 
+## 0.1.22 (2026-10-14)
+
+**General settings:**
+
+- Fixed bug in DownloadET0fromDWD.R to suppress minor warnings, changed raster package to terra package
+- Integrated fall back solutions, if errors happen in calcwb.R (different sizes of aggregated shape files)
+- Making irrig_sf an sf-object, if it is still a character string in calcWB.R
+- Improvement of wallpaper plots alignment in calcWBplots.R
+- increased Resolution of resulting Images
+- Improved DownloadSentinel2.R to also download Geotiffs containing all bands
+
+---
+
 ## 0.1.21 (2026-03-12)
 
 **General settings:**

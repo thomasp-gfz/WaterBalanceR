@@ -1,7 +1,7 @@
 Package: WaterBalanceR
 Type: Package
 Title: Calculate High Resolution Water Balance of Starch Potatoes
-Version: 0.1.21
+Version: 0.1.22
 Authors@R: 
     person(
       given = "Thomas",
@@ -29,7 +29,6 @@ Imports:
     terra,
     gridExtra,
     httr,
-    RSelenium,
     stringr,
     rvest,
     sp,
@@ -37,13 +36,14 @@ Imports:
     RCurl,
     grDevices,
     tidyselect,
-    openeo,
     magrittr,
     jsonlite,
     dplyr,
     readxl,
     scales,
     methods,
+    RSelenium,
+    openeo,
     rlang
 URL: https://doi.org/10.5281/zenodo.15046338,
      https://github.com/thomasp-gfz/WaterBalanceR
